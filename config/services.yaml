@@ -19,9 +19,15 @@ services:
     App\:
         resource: '../src/'
 
+    App\Service\LLM\LLMInterface: '@App\Service\LLM\Groq'
+
     App\Service\LLM\Groq:
         arguments:
             $apiKey: '%env(GROQ_API_KEY)%'
+
+    App\Service\Telegram\TelegramService:
+        arguments:
+            $token: '%env(TELEGRAM_BOT_TOKEN)%'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

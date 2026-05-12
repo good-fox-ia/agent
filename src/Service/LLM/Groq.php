@@ -6,13 +6,10 @@ class Groq extends AbstractLLM
 {
     private const URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-    public function __construct(private readonly string $apiKey)
-    {
-        if ($this->apiKey === '') throw new \InvalidArgumentException('GROQ_API_KEY is empty');
-    }
-
     public function complete(string $prompt, array $options = []): string
     {
+        if ($this->apiKey === '') throw new \InvalidArgumentException('GROQ_API_KEY is empty');
+
         $model = $options['model'] ?? 'llama-3.3-70b-versatile';
 
         $extra = array_intersect_key($options, array_flip([
@@ -34,7 +31,7 @@ class Groq extends AbstractLLM
             ],
         ], $extra);
 
-        $decoded = $this->post(self::URL, ['Authorization' => 'Bearer ' . $this->apiKey], $body);
+        $decoded = $this->post(self::URL, $body, ['Authorization' => 'Bearer ' . $this->apiKey]);
         $content = $decoded['choices'][0]['message']['content'] ?? null;
         if (!is_string($content)) throw new \RuntimeException('Groq response has no message content.');
 
