@@ -45,6 +45,29 @@ class TelegramService
         return $decoded['result'] ?? [];
     }
 
+    public function getFile(string $fileId): array
+    {
+        $this->assertToken();
+
+        $url = sprintf('https://api.telegram.org/bot%s/getFile', $this->token);
+        $decoded = $this->httpClient->post($url, ['file_id' => $fileId]);
+        $this->isValidDecoded($decoded);
+
+        $result = $decoded['result'] ?? null;
+        if (!is_array($result)) throw new \RuntimeException('Telegram getFile: empty result.');
+
+        return $result;
+    }
+
+    public function downloadFile(string $filePath): string
+    {
+        $this->assertToken();
+
+        $url = sprintf('https://api.telegram.org/file/bot%s/%s', $this->token, $filePath);
+
+        return $this->httpClient->get($url);
+    }
+
     private function assertToken(): void
     {
         if ($this->token === '') throw new \InvalidArgumentException('TELEGRAM_BOT_TOKEN is empty');

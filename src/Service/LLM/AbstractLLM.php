@@ -20,4 +20,9 @@ abstract class AbstractLLM implements LLMInterface
     {
         return $this->httpClient->post($url, $body, $headers);
     }
+
+    protected function postMultipart(string $url, array $body, array $headers = []): array
+    {
+        return $this->httpClient->postMultipart($url, $body, $headers);
+    }
 }

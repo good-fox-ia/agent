@@ -75,13 +75,69 @@ final class TelegramEventUpdatesCommand extends Command
                 $chatId = $message['chat']['id'] ?? null;
                 if ($chatId === null) continue;
 
+                $chatType = (string) ($message['chat']['type'] ?? 'private');
+                $isGroup = in_array($chatType, ['group', 'supergroup'], true);
+
                 $from = $message['from']['username'] ?? $message['from']['first_name'] ?? '?';
                 $text = isset($message['text']) ? trim((string) $message['text']) : '';
+
+                $fileId = null;
+                $audioFilename = 'voice.ogg';
+                if (isset($message['voice']['file_id'])) {
+                    $fileId = (string) $message['voice']['file_id'];
+                } elseif (isset($message['audio']['file_id'])) {
+                    $fileId = (string) $message['audio']['file_id'];
+                    $fn = $message['audio']['file_name'] ?? null;
+                    $audioFilename = is_string($fn) && $fn !== '' ? basename($fn) : 'audio.ogg';
+                }
+
+                if ($fileId !== null) {
+                    try {
+                        $meta = $this->telegram->getFile($fileId);
+                        $filePath = $meta['file_path'] ?? null;
+                        if (!is_string($filePath) || $filePath === '') throw new \RuntimeException('Telegram getFile: missing file_path.');
+
+                        $binary = $this->telegram->downloadFile($filePath);
+                        $transcript = $this->llm->transcribeAudio($binary, $audioFilename, ['language' => 'uk']);
+                        if ($transcript === '') {
+                            $this->telegram->sendMessage($chatId, 'Не вдалося розпізнати мову. Спробуйте ще раз голосом.');
+                            continue;
+                        }
+                        
+                        $prompt = "Користувач надіслав голосове повідомлення. Розпізнаний текст:\n\n".$transcript."\n\nВідповідай стисло українською.";
+                        $answer = $this->llm->complete($prompt);
+                        $answer = mb_substr($answer, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
+                        $this->telegram->sendMessage($chatId, $answer);
+                        $io->writeln(sprintf(
+                            '[%s] chat=%s from=%s voice transcript=%s',
+                            date('c'),
+                            (string) $chatId,
+                            (string) $from,
+                            mb_substr($transcript, 0, 80),
+                        ));
+                    } catch (\Throwable $e) {
+                        $io->error(sprintf('voice/audio chat=%s: %s', (string) $chatId, $e->getMessage()));
+                        try {
+                            $this->telegram->sendMessage(
+                                $chatId,
+                                mb_substr('Помилка обробки аудіо: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
+                            );
+                        } catch (\Throwable) {
+                        }
+                    }
+
+                    continue;
+                }
+
+                if ($isGroup) {
+                    continue;
+                }
+
                 $preview = $text !== '' ? mb_substr($text, 0, 80) : '[не текст]';
 
                 if ($text === '') {
                     try {
-                        $this->telegram->sendMessage($chatId, 'Надішліть текстове повідомлення.');
+                        $this->telegram->sendMessage($chatId, 'Надішліть текстове або голосове повідомлення.');
                     } catch (\Throwable $e) {
                         $io->error(sprintf('sendMessage chat=%s: %s', (string) $chatId, $e->getMessage()));
                     }
