@@ -7,11 +7,13 @@
         "php": ">=8.4",
         "ext-ctype": "*",
         "ext-iconv": "*",
+        "doctrine/mongodb-odm-bundle": "^5.6",
         "symfony/console": "8.0.*",
         "symfony/dotenv": "8.0.*",
         "symfony/flex": "^2",
         "symfony/framework-bundle": "8.0.*",
         "symfony/http-client": "8.0.*",
+        "symfony/messenger": "8.0.*",
         "symfony/runtime": "8.0.*",
         "symfony/yaml": "8.0.*"
     },
@@ -62,9 +64,10 @@
         "symfony/symfony": "*"
     },
     "extra": {
-        "symfony": {
-            "allow-contrib": false,
-            "require": "8.0.*"
-        }
+    "symfony": {
+      "allow-contrib": false,
+      "require": "8.0.*",
+      "docker": false
+    }
     }
 }
