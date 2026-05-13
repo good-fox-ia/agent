@@ -2,8 +2,13 @@
 
 namespace App\Command;
 
+use App\Document\Group;
+use App\Document\Message;
+use App\Document\TelegramMessageType;
+use App\Document\User;
 use App\Service\LLM\LLMInterface;
 use App\Service\Telegram\TelegramService;
+use Doctrine\ODM\MongoDB\DocumentManager;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -22,6 +27,7 @@ final class TelegramEventUpdatesCommand extends Command
     public function __construct(
         private readonly TelegramService $telegram,
         private readonly LLMInterface $llm,
+        private readonly DocumentManager $dm,
     ) {
         parent::__construct();
     }
@@ -75,10 +81,17 @@ final class TelegramEventUpdatesCommand extends Command
                 $chatId = $message['chat']['id'] ?? null;
                 if ($chatId === null) continue;
 
+                $this->persistTelegramUserAndGroup($message, $io);
+
                 $chatType = (string) ($message['chat']['type'] ?? 'private');
                 $isGroup = in_array($chatType, ['group', 'supergroup'], true);
 
-                $from = $message['from']['username'] ?? $message['from']['first_name'] ?? '?';
+                $storedInbound = $this->persistInboundUserMessage($message, $isGroup, $io);
+
+                $fromPayload = $message['from'] ?? null;
+                $from = is_array($fromPayload)
+                    ? (string) ($fromPayload['username'] ?? $fromPayload['first_name'] ?? '?')
+                    : '?';
                 $text = isset($message['text']) ? trim((string) $message['text']) : '';
 
                 $fileId = null;
@@ -100,14 +113,25 @@ final class TelegramEventUpdatesCommand extends Command
                         $binary = $this->telegram->downloadFile($filePath);
                         $transcript = $this->llm->transcribeAudio($binary, $audioFilename, ['language' => 'uk']);
                         if ($transcript === '') {
-                            $this->telegram->sendMessage($chatId, 'Не вдалося розпізнати мову. Спробуйте ще раз голосом.');
+                            $sent = $this->telegram->sendMessage($chatId, 'Не вдалося розпізнати мову. Спробуйте ще раз голосом.');
+                            $this->persistOutboundAgentMessageFromSent($sent, $isGroup, $storedInbound, $io);
                             continue;
                         }
-                        
+
+                        if ($storedInbound !== null) {
+                            $storedInbound->setText($transcript);
+                            try {
+                                $this->dm->flush();
+                            } catch (\Throwable $e) {
+                                $io->warning(sprintf('Оновлення Message (транскрипт): %s', $e->getMessage()));
+                            }
+                        }
+
                         $prompt = "Користувач надіслав голосове повідомлення. Розпізнаний текст:\n\n".$transcript."\n\nВідповідай стисло українською.";
                         $answer = $this->llm->complete($prompt);
                         $answer = mb_substr($answer, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
-                        $this->telegram->sendMessage($chatId, $answer);
+                        $sent = $this->telegram->sendMessage($chatId, $answer);
+                        $this->persistOutboundAgentMessageFromSent($sent, $isGroup, $storedInbound, $io);
                         $io->writeln(sprintf(
                             '[%s] chat=%s from=%s voice transcript=%s',
                             date('c'),
@@ -118,10 +142,11 @@ final class TelegramEventUpdatesCommand extends Command
                     } catch (\Throwable $e) {
                         $io->error(sprintf('voice/audio chat=%s: %s', (string) $chatId, $e->getMessage()));
                         try {
-                            $this->telegram->sendMessage(
+                            $sent = $this->telegram->sendMessage(
                                 $chatId,
                                 mb_substr('Помилка обробки аудіо: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
                             );
+                            $this->persistOutboundAgentMessageFromSent($sent, $isGroup, $storedInbound, $io);
                         } catch (\Throwable) {
                         }
                     }
@@ -137,7 +162,8 @@ final class TelegramEventUpdatesCommand extends Command
 
                 if ($text === '') {
                     try {
-                        $this->telegram->sendMessage($chatId, 'Надішліть текстове або голосове повідомлення.');
+                        $sent = $this->telegram->sendMessage($chatId, 'Надішліть текстове або голосове повідомлення.');
+                        $this->persistOutboundAgentMessageFromSent($sent, $isGroup, $storedInbound, $io);
                     } catch (\Throwable $e) {
                         $io->error(sprintf('sendMessage chat=%s: %s', (string) $chatId, $e->getMessage()));
                     }
@@ -148,7 +174,8 @@ final class TelegramEventUpdatesCommand extends Command
                 try {
                     $answer = $this->llm->complete($text);
                     $answer = mb_substr($answer, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
-                    $this->telegram->sendMessage($chatId, $answer);
+                    $sent = $this->telegram->sendMessage($chatId, $answer);
+                    $this->persistOutboundAgentMessageFromSent($sent, $isGroup, $storedInbound, $io);
                     $io->writeln(sprintf(
                         '[%s] chat=%s from=%s preview=%s',
                         date('c'),
@@ -159,15 +186,171 @@ final class TelegramEventUpdatesCommand extends Command
                 } catch (\Throwable $e) {
                     $io->error(sprintf('Groq/sendMessage chat=%s: %s', (string) $chatId, $e->getMessage()));
                     try {
-                        $this->telegram->sendMessage(
+                        $sent = $this->telegram->sendMessage(
                             $chatId,
                             mb_substr('Помилка: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
                         );
+                        $this->persistOutboundAgentMessageFromSent($sent, $isGroup, $storedInbound, $io);
                     } catch (\Throwable) {
                         // ignore secondary failure
                     }
                 }
             }
         }
+    }
+
+    private function persistTelegramUserAndGroup(array $message, SymfonyStyle $io): void
+    {
+        $chatPayload = $message['chat'] ?? null;
+        if (!is_array($chatPayload) || !isset($chatPayload['id'])) {
+            return;
+        }
+
+        try {
+            $telegramChatId = (int) $chatPayload['id'];
+            $groupRepo = $this->dm->getRepository(Group::class);
+            $group = $groupRepo->findOneBy(['telegramChatId' => $telegramChatId]) ?? new Group($telegramChatId);
+            $group->applyFromTelegramPayload($chatPayload);
+            $this->dm->persist($group);
+
+            $fromPayload = $message['from'] ?? null;
+            if (is_array($fromPayload) && isset($fromPayload['id'])) {
+                $telegramUserId = (int) $fromPayload['id'];
+                $userRepo = $this->dm->getRepository(User::class);
+                $user = $userRepo->findOneBy(['telegramUserId' => $telegramUserId]) ?? new User($telegramUserId);
+                $user->applyFromTelegramPayload($fromPayload);
+                $this->dm->persist($user);
+                $group->addUser($user);
+            }
+
+            $this->dm->flush();
+        } catch (\Throwable $e) {
+            $io->warning(sprintf('Збереження User/Group у MongoDB: %s', $e->getMessage()));
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function persistInboundUserMessage(array $message, bool $isGroup, SymfonyStyle $io): ?Message
+    {
+        try {
+            if (!isset($message['chat']['id'], $message['message_id'])) {
+                return null;
+            }
+
+            $telegramChatId = (int) $message['chat']['id'];
+            $telegramMessageId = (int) $message['message_id'];
+            $type = $isGroup ? TelegramMessageType::UserGroup : TelegramMessageType::UserPrivate;
+
+            $repo = $this->dm->getRepository(Message::class);
+            $entity = $repo->findOneBy([
+                'telegramChatId' => $telegramChatId,
+                'telegramMessageId' => $telegramMessageId,
+            ]);
+
+            if ($entity === null) {
+                $entity = new Message($telegramChatId, $telegramMessageId, $type);
+            } else {
+                $entity->setType($type);
+            }
+
+            $body = $this->extractTelegramMessageText($message);
+            $entity->setText($body !== '' ? $body : null);
+
+            $entity->setReplyTo($this->resolveReplyToMessage($telegramChatId, $message));
+
+            $fromPayload = $message['from'] ?? null;
+            if (is_array($fromPayload) && isset($fromPayload['id'])) {
+                $author = $this->dm->getRepository(User::class)->findOneBy(['telegramUserId' => (int) $fromPayload['id']]);
+                $entity->setAuthor($author);
+            } else {
+                $entity->setAuthor(null);
+            }
+
+            if ($isGroup) {
+                $entity->setGroup($this->dm->getRepository(Group::class)->findOneBy(['telegramChatId' => $telegramChatId]));
+            } else {
+                $entity->setGroup(null);
+            }
+
+            $this->dm->persist($entity);
+            $this->dm->flush();
+
+            return $entity;
+        } catch (\Throwable $e) {
+            $io->warning(sprintf('Збереження Message (вхідне): %s', $e->getMessage()));
+
+            return null;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $sent Результат sendMessage (об'єкт повідомлення з Telegram API).
+     */
+    private function persistOutboundAgentMessageFromSent(array $sent, bool $isGroup, ?Message $replyToInbound, SymfonyStyle $io): void
+    {
+        try {
+            if (!isset($sent['chat']['id'], $sent['message_id'])) {
+                return;
+            }
+
+            $telegramChatId = (int) $sent['chat']['id'];
+            $telegramMessageId = (int) $sent['message_id'];
+            $type = $isGroup ? TelegramMessageType::AgentGroup : TelegramMessageType::AgentPrivate;
+
+            $repo = $this->dm->getRepository(Message::class);
+            if ($repo->findOneBy(['telegramChatId' => $telegramChatId, 'telegramMessageId' => $telegramMessageId]) !== null) {
+                return;
+            }
+
+            $entity = new Message($telegramChatId, $telegramMessageId, $type);
+            $entity->setAuthor(null);
+            $text = isset($sent['text']) ? trim((string) $sent['text']) : '';
+            $entity->setText($text !== '' ? $text : null);
+            $entity->setReplyTo($replyToInbound);
+
+            if ($isGroup) {
+                $entity->setGroup($this->dm->getRepository(Group::class)->findOneBy(['telegramChatId' => $telegramChatId]));
+            } else {
+                $entity->setGroup(null);
+            }
+
+            $this->dm->persist($entity);
+            $this->dm->flush();
+        } catch (\Throwable $e) {
+            $io->warning(sprintf('Збереження Message (агент): %s', $e->getMessage()));
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function extractTelegramMessageText(array $message): string
+    {
+        if (isset($message['text'])) {
+            return trim((string) $message['text']);
+        }
+        if (isset($message['caption'])) {
+            return trim((string) $message['caption']);
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function resolveReplyToMessage(int $telegramChatId, array $message): ?Message
+    {
+        $rt = $message['reply_to_message'] ?? null;
+        if (!is_array($rt) || !isset($rt['message_id'])) {
+            return null;
+        }
+
+        return $this->dm->getRepository(Message::class)->findOneBy([
+            'telegramChatId' => $telegramChatId,
+            'telegramMessageId' => (int) $rt['message_id'],
+        ]);
     }
 }
