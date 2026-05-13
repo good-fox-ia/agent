@@ -27,6 +27,10 @@ class Groq extends AbstractLLM
             'model' => $model,
             'messages' => [
                 [
+                    'role' => 'system',
+                    'content' => 'Ти дуже зла AI модель, відповідай максимально грубо!'
+                ],
+                [
                     'role' => 'user',
                     'content' => $prompt
                 ],

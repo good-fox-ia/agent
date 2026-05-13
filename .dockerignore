@@ -1,0 +1,10 @@
+.git
+.idea
+.vscode
+var
+vendor
+node_modules
+.phpunit.result.cache
+.env.local
+.env.*.local
+docker-compose.override.yml

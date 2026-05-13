@@ -1,0 +1,58 @@
+# Запуск: docker compose up -d --build
+# Composer у контейнері: docker compose exec php composer install
+# Консоль: docker compose exec php php bin/console ...
+# Додаток: http://localhost:8080  | Mongo: localhost:27017 | Redis: 6379 | RabbitMQ UI: http://localhost:15672 (guest/guest)
+
+services:
+  php:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    volumes:
+      - .:/var/www/html
+    environment:
+      APP_ENV: dev
+      APP_DEBUG: "1"
+      DEFAULT_URI: http://localhost:8080
+      MONGODB_URL: mongodb://mongodb:27017
+      MONGODB_DB: app
+      REDIS_URL: redis://redis:6379
+      MESSENGER_TRANSPORT_DSN: amqp://guest:guest@rabbitmq:5672/%2f
+    depends_on:
+      - mongodb
+      - redis
+      - rabbitmq
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/var/www/html:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - php
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+volumes:
+  mongodata: {}
