@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace App\Document;
 
+use App\Repository\UserRepository;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Document;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Field;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Id;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Index;
 
-
 #[Document(
     collection: 'users',
+    repositoryClass: UserRepository::class,
     indexes: [
         new Index(keys: ['telegramUserId' => 1], unique: true, name: 'telegram_user_id_unique'),
     ],

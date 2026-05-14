@@ -6,6 +6,7 @@ namespace App\Document;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
+use App\Repository\GroupRepository;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Document;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Field;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Id;
@@ -15,6 +16,7 @@ use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 
 #[Document(
     collection: 'groups',
+    repositoryClass: GroupRepository::class,
     indexes: [
         new Index(keys: ['telegramChatId' => 1], unique: true, name: 'telegram_group_chat_id_unique'),
     ],

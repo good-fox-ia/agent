@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace App\Document;
 
+use App\Enum\MessageType;
+use App\Repository\MessageRepository;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Document;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Field;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Id;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Index;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\ReferenceOne;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
-use App\Enum\MessageType;
 
 #[Document(
     collection: 'messages',
+    repositoryClass: MessageRepository::class,
     indexes: [
         new Index(keys: ['telegramChatId' => 1, 'telegramMessageId' => 1], unique: true, name: 'telegram_chat_message_unique'),
     ],
