@@ -1,6 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Service\LLM;
+
+use App\Service\LLM\DTO\PromptDTO;
 
 class Groq extends AbstractLLM
 {
@@ -8,7 +12,7 @@ class Groq extends AbstractLLM
 
     private const TRANSCRIBE_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 
-    public function complete(string $prompt, array $options = []): string
+    public function complete(PromptDTO $prompt, array $options = []): string
     {
         if ($this->apiKey === '') throw new \InvalidArgumentException('GROQ_API_KEY is empty');
 
@@ -23,18 +27,12 @@ class Groq extends AbstractLLM
             'presence_penalty',
         ]));
 
-        $body = array_merge([
+        $fromPrompt = $this->promptAdapter->adapt($prompt);
+        $messages = $fromPrompt['messages'] ?? [];
+        if (!is_array($messages) || $messages === []) throw new \InvalidArgumentException('PromptDTO yields no messages for the model.');
+
+        $body = array_merge($fromPrompt, [
             'model' => $model,
-            'messages' => [
-                [
-                    'role' => 'system',
-                    'content' => 'Ти дуже зла AI модель, відповідай максимально грубо!'
-                ],
-                [
-                    'role' => 'user',
-                    'content' => $prompt
-                ],
-            ],
         ], $extra);
 
         $decoded = $this->post(self::COMPLETE_URL, $body, self::getHeaders());

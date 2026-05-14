@@ -21,6 +21,8 @@ services:
 
     App\Service\LLM\LLMInterface: '@App\Service\LLM\Groq'
 
+    App\Service\LLM\Adapter\PromptAdapterInterface: '@App\Service\LLM\Adapter\GroqPromptAdapter'
+
     App\Service\LLM\Groq:
         arguments:
             $apiKey: '%env(GROQ_API_KEY)%'

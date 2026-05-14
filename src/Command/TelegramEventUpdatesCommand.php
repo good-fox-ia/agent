@@ -4,8 +4,9 @@ namespace App\Command;
 
 use App\Document\Group;
 use App\Document\Message;
-use App\Document\TelegramMessageType;
 use App\Document\User;
+use App\Enum\MessageType;
+use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\LLMInterface;
 use App\Service\Telegram\TelegramService;
 use Doctrine\ODM\MongoDB\DocumentManager;
@@ -23,6 +24,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final class TelegramEventUpdatesCommand extends Command
 {
     private const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
+
+    private const LLM_MAX_CONTEXT_MESSAGES = 80;
+
+    private const LLM_SYSTEM_PROMPT = 'Ти корисний асистент. Відповідай українською, стисло та по суті.';
 
     public function __construct(
         private readonly TelegramService $telegram,
@@ -127,8 +132,7 @@ final class TelegramEventUpdatesCommand extends Command
                             }
                         }
 
-                        $prompt = "Користувач надіслав голосове повідомлення. Розпізнаний текст:\n\n".$transcript."\n\nВідповідай стисло українською.";
-                        $answer = $this->llm->complete($prompt);
+                        $answer = $this->llm->complete($this->buildPromptDtoForChat((int) $chatId));
                         $answer = mb_substr($answer, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
                         $sent = $this->telegram->sendMessage($chatId, $answer);
                         $this->persistOutboundAgentMessageFromSent($sent, $isGroup, $storedInbound, $io);
@@ -172,7 +176,7 @@ final class TelegramEventUpdatesCommand extends Command
                 }
 
                 try {
-                    $answer = $this->llm->complete($text);
+                    $answer = $this->llm->complete($this->buildPromptDtoForChat((int) $chatId));
                     $answer = mb_substr($answer, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
                     $sent = $this->telegram->sendMessage($chatId, $answer);
                     $this->persistOutboundAgentMessageFromSent($sent, $isGroup, $storedInbound, $io);
@@ -197,6 +201,45 @@ final class TelegramEventUpdatesCommand extends Command
                 }
             }
         }
+    }
+
+    private function buildPromptDtoForChat(int $telegramChatId): PromptDTO
+    {
+        return new PromptDTO(
+            messages: $this->buildChatMessagesForLlm($telegramChatId),
+            tools: [],
+            systemPrompt: self::LLM_SYSTEM_PROMPT,
+        );
+    }
+
+    /**
+     * @return list<array{role: string, content: string}>
+     */
+    private function buildChatMessagesForLlm(int $telegramChatId): array
+    {
+        $repo = $this->dm->getRepository(Message::class);
+        /** @var list<Message> $stored */
+        $stored = $repo->findBy(['telegramChatId' => $telegramChatId], ['createdAt' => 'ASC']);
+        if (count($stored) > self::LLM_MAX_CONTEXT_MESSAGES) {
+            $stored = array_slice($stored, -self::LLM_MAX_CONTEXT_MESSAGES);
+        }
+
+        $messages = [];
+        foreach ($stored as $doc) {
+            $t = $doc->getText();
+            if ($t === null || trim($t) === '') {
+                continue;
+            }
+            $messages[] = [
+                'role' => match ($doc->getType()) {
+                    MessageType::UserPrivate, MessageType::UserGroup => 'user',
+                    MessageType::AgentPrivate, MessageType::AgentGroup => 'assistant',
+                },
+                'content' => $t,
+            ];
+        }
+
+        return $messages;
     }
 
     private function persistTelegramUserAndGroup(array $message, SymfonyStyle $io): void
@@ -241,7 +284,7 @@ final class TelegramEventUpdatesCommand extends Command
 
             $telegramChatId = (int) $message['chat']['id'];
             $telegramMessageId = (int) $message['message_id'];
-            $type = $isGroup ? TelegramMessageType::UserGroup : TelegramMessageType::UserPrivate;
+            $type = $isGroup ? MessageType::UserGroup : MessageType::UserPrivate;
 
             $repo = $this->dm->getRepository(Message::class);
             $entity = $repo->findOneBy([
@@ -297,7 +340,7 @@ final class TelegramEventUpdatesCommand extends Command
 
             $telegramChatId = (int) $sent['chat']['id'];
             $telegramMessageId = (int) $sent['message_id'];
-            $type = $isGroup ? TelegramMessageType::AgentGroup : TelegramMessageType::AgentPrivate;
+            $type = $isGroup ? MessageType::AgentGroup : MessageType::AgentPrivate;
 
             $repo = $this->dm->getRepository(Message::class);
             if ($repo->findOneBy(['telegramChatId' => $telegramChatId, 'telegramMessageId' => $telegramMessageId]) !== null) {

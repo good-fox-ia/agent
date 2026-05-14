@@ -3,12 +3,14 @@
 namespace App\Service\LLM;
 
 use App\Service\Http\Client;
+use App\Service\LLM\Adapter\PromptAdapterInterface;
 
 abstract class AbstractLLM implements LLMInterface
 {
     public function __construct(
         protected readonly string $apiKey,
         private readonly Client $httpClient,
+        protected readonly PromptAdapterInterface $promptAdapter
     ) {}
 
     public function isConfigured(): bool

@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controller;
 
+use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\LLMInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -27,7 +30,14 @@ class TestController extends AbstractController
         }
 
         try {
-            $response = $llm->complete($prompt);
+            $promptDto = new PromptDTO(
+                messages: [
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                tools: [],
+                systemPrompt: null,
+            );
+            $response = $llm->complete($promptDto);
         } catch (\Throwable $e) {
             return $this->json([
                 'error' => $e->getMessage(),
