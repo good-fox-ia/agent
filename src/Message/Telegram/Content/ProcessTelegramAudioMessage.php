@@ -7,9 +7,5 @@ namespace App\Message\Telegram\Content;
 /** Голос / audio — транскрипція, далі маршрут на private/group. */
 final readonly class ProcessTelegramAudioMessage
 {
-    public function __construct(
-        public array $message,
-        public string $fileId,
-        public string $audioFileName,
-    ) {}
+    public function __construct(public array $message) {}
 }

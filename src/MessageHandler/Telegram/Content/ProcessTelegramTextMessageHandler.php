@@ -7,7 +7,7 @@ namespace App\MessageHandler\Telegram\Content;
 use App\Message\Telegram\Chat\ProcessTelegramGroupMessage;
 use App\Message\Telegram\Chat\ProcessTelegramPrivateMessage;
 use App\Message\Telegram\Content\ProcessTelegramTextMessage;
-use App\Telegram\TelegramUpdatePayload;
+use App\Service\Telegram\TelegramMessageHelper;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
 
@@ -20,8 +20,8 @@ final class ProcessTelegramTextMessageHandler
 
     public function __invoke(ProcessTelegramTextMessage $message): void
     {
-        $payload = $message->telegramMessage;
-        if (TelegramUpdatePayload::visibleTextBody($payload) === '') {
+        $payload = $message->message;
+        if (TelegramMessageHelper::visibleTextBody($payload) === '') {
             return;
         }
 
@@ -31,8 +31,7 @@ final class ProcessTelegramTextMessageHandler
             return;
         }
 
-        $chatType = (string) ($payload['chat']['type'] ?? 'private');
-        $isGroup = in_array($chatType, ['group', 'supergroup'], true);
+        $isGroup = TelegramMessageHelper::isGroup($payload);
 
         if ($isGroup) {
             $this->bus->dispatch(new ProcessTelegramGroupMessage($chatId, $messageId));

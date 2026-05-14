@@ -8,7 +8,7 @@ use App\Document\Group;
 use App\Document\Message;
 use App\Document\User;
 use App\Enum\MessageType;
-use App\Telegram\TelegramUpdatePayload;
+use App\Service\Telegram\TelegramMessageHelper;
 use Doctrine\Bundle\MongoDBBundle\ManagerRegistry;
 use Doctrine\Bundle\MongoDBBundle\Repository\ServiceDocumentRepository;
 
@@ -45,11 +45,13 @@ final class MessageRepository extends ServiceDocumentRepository
     /**
      * @param array<string, mixed> $telegramMessage об'єкт message з Telegram API
      */
-    public function saveInboundUserFromTelegramPayload(array $telegramMessage, bool $isGroup): Message
+    public function saveInboundUserFromTelegramPayload(array $telegramMessage): Message
     {
         if (!isset($telegramMessage['chat']['id'], $telegramMessage['message_id'])) {
             throw new \InvalidArgumentException('Telegram message: missing chat.id or message_id.');
         }
+
+        $isGroup = TelegramMessageHelper::isGroup($telegramMessage);
 
         $telegramChatId = (int) $telegramMessage['chat']['id'];
         $telegramMessageId = (int) $telegramMessage['message_id'];
@@ -59,7 +61,7 @@ final class MessageRepository extends ServiceDocumentRepository
             ?? new Message($telegramChatId, $telegramMessageId, $type);
         $entity->setType($type);
 
-        $body = TelegramUpdatePayload::visibleTextBody($telegramMessage);
+        $body = TelegramMessageHelper::visibleTextBody($telegramMessage);
         $entity->setText($body !== '' ? $body : null);
 
         $entity->setReplyTo($this->resolveReplyToFromTelegramPayload($telegramChatId, $telegramMessage));

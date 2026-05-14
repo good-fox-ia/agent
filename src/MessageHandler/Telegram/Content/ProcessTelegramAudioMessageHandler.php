@@ -9,7 +9,8 @@ use App\Message\Telegram\Chat\ProcessTelegramPrivateMessage;
 use App\Message\Telegram\Content\ProcessTelegramAudioMessage;
 use App\Repository\MessageRepository;
 use App\Service\LLM\LLMInterface;
-use App\Service\Telegram\TelegramInboundUpdateApplier;
+use App\Service\Telegram\TelegramMessageHelper;
+use App\Service\Telegram\TelegramPersistenceService;
 use App\Service\Telegram\TelegramService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -24,39 +25,44 @@ final class ProcessTelegramAudioMessageHandler
         private readonly TelegramService $telegram,
         private readonly LLMInterface $llm,
         private readonly MessageRepository $messages,
-        private readonly TelegramInboundUpdateApplier $inboundUpdateApplier,
+        private readonly TelegramPersistenceService $persistence,
         private readonly MessageBusInterface $bus,
         private readonly LoggerInterface $logger,
     ) {}
 
     public function __invoke(ProcessTelegramAudioMessage $message): void
     {
-        $payload = $message->telegramMessage;
+        $payload = $message->message;
         $chatId = $payload['chat']['id'] ?? null;
         if ($chatId === null) {
             return;
         }
 
-        $chatType = (string) ($payload['chat']['type'] ?? 'private');
-        $isGroup = in_array($chatType, ['group', 'supergroup'], true);
+        $resolved = $this->resolveVoiceOrAudioFile($payload);
+        if ($resolved === null) {
+            return;
+        }
+        [$fileId, $audioFilename] = $resolved;
+
+        $isGroup = TelegramMessageHelper::isGroup($payload);
         $telegramChatId = (int) $chatId;
         $telegramMessageId = (int) ($payload['message_id'] ?? 0);
 
         $storedInbound = $this->messages->findOneByTelegramMessageIds($telegramChatId, $telegramMessageId);
 
         try {
-            $meta = $this->telegram->getFile($message->fileId);
+            $meta = $this->telegram->getFile($fileId);
             $filePath = $meta['file_path'] ?? null;
             if (!is_string($filePath) || $filePath === '') {
                 throw new \RuntimeException('Telegram getFile: missing file_path.');
             }
 
             $binary = $this->telegram->downloadFile($filePath);
-            $transcript = $this->llm->transcribeAudio($binary, $message->audioFilename, ['language' => 'uk']);
+            $transcript = $this->llm->transcribeAudio($binary, $audioFilename, ['language' => 'uk']);
 
             if ($transcript === '') {
                 $sent = $this->telegram->sendMessage($chatId, 'Не вдалося розпізнати мову. Спробуйте ще раз голосом.');
-                $this->inboundUpdateApplier->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
+                $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
 
                 return;
             }
@@ -84,9 +90,29 @@ final class ProcessTelegramAudioMessageHandler
                     $chatId,
                     mb_substr('Помилка обробки аудіо: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
                 );
-                $this->inboundUpdateApplier->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
+                $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
             } catch (\Throwable) {
             }
         }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array{0: string, 1: string}|null [file_id, filename for LLM]
+     */
+    private function resolveVoiceOrAudioFile(array $payload): ?array
+    {
+        if (isset($payload['voice']['file_id'])) {
+            return [(string) $payload['voice']['file_id'], 'voice.ogg'];
+        }
+        if (isset($payload['audio']['file_id'])) {
+            $fn = $payload['audio']['file_name'] ?? null;
+            $name = is_string($fn) && $fn !== '' ? basename($fn) : 'audio.ogg';
+
+            return [(string) $payload['audio']['file_id'], $name];
+        }
+
+        return null;
     }
 }

@@ -25,7 +25,7 @@ final class TelegramAgentLlmReplySender
         private readonly TelegramService $telegram,
         private readonly LLMInterface $llm,
         private readonly MessageRepository $messages,
-        private readonly TelegramInboundUpdateApplier $inboundUpdateApplier,
+        private readonly TelegramPersistenceService $persistence,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -43,7 +43,7 @@ final class TelegramAgentLlmReplySender
             $answer = $this->llm->complete($this->buildPromptDtoForChat($telegramChatId));
             $answer = mb_substr($answer, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
             $sent = $this->telegram->sendMessage($telegramChatId, $answer);
-            $this->inboundUpdateApplier->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
+            $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
             $this->logger->info('Відповідь агента надіслано в chat {chat}', ['chat' => $telegramChatId]);
         } catch (\Throwable $e) {
             $this->logger->error('Помилка LLM/sendMessage chat={chat}: {error}', [
@@ -55,7 +55,7 @@ final class TelegramAgentLlmReplySender
                     $telegramChatId,
                     mb_substr('Помилка: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
                 );
-                $this->inboundUpdateApplier->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
+                $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
             } catch (\Throwable) {
                 // ignore secondary failure
             }
