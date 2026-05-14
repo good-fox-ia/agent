@@ -63,7 +63,7 @@ docker compose exec php php bin/console app:telegram:event-updates
 Обробка черг Messenger (воркери; можна запустити кілька терміналів або один процес з кількома транспортами):
 
 ```bash
-docker compose exec php php bin/console messenger:consume telegram_messages telegram_audio telegram_message_private telegram_message_group -vv
+docker compose exec php php bin/console messenger:consume telegram_inbound telegram_messages telegram_audio telegram_message_private telegram_message_group -vv
 ```
 
 Перегляд черг і помилок:

@@ -3,6 +3,15 @@ framework:
         transports:
             sync: 'sync://'
 
+            telegram_inbound:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    exchange:
+                        name: telegram_inbound
+                        type: fanout
+                    queues:
+                        telegram_inbound: ~
+
             telegram_messages:
                 dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
                 options:
@@ -40,6 +49,7 @@ framework:
                         telegram_message_group: ~
 
         routing:
+            App\Message\Telegram\ProcessTelegramMessage: telegram_inbound
             App\Message\Telegram\Content\ProcessTelegramTextMessage: telegram_messages
             App\Message\Telegram\Content\ProcessTelegramAudioMessage: telegram_audio
             App\Message\Telegram\Chat\ProcessTelegramPrivateMessage: telegram_message_private
