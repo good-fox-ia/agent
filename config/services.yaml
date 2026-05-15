@@ -7,6 +7,7 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    groq.chat_model: 'openai/gpt-oss-120b'
 
 services:
     # default configuration for services in *this* file
@@ -23,9 +24,18 @@ services:
 
     App\Service\LLM\Adapter\PromptAdapterInterface: '@App\Service\LLM\Adapter\GroqPromptAdapter'
 
+    _instanceof:
+        App\Service\LLM\Tool\ToolInterface:
+            tags: ['app.llm.tool']
+
+    App\Service\LLM\Tool\ToolRegistry:
+        arguments:
+            $tools: !tagged_iterator app.llm.tool
+
     App\Service\LLM\Groq:
         arguments:
             $apiKey: '%env(GROQ_API_KEY)%'
+            $defaultChatModel: '%env(default:groq.chat_model:GROQ_CHAT_MODEL)%'
 
     App\Service\Telegram\TelegramService:
         arguments:

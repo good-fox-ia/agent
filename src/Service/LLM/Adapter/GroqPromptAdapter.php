@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Service\LLM\Adapter;
 
 use App\Service\LLM\DTO\PromptDTO;
-
+use App\Service\LLM\Tool\ToolRegistry;
 
 final class GroqPromptAdapter implements PromptAdapterInterface
 {
+    public function __construct(
+        private readonly ToolRegistry $toolRegistry,
+    ) {}
+
     public function adapt(PromptDTO $prompt): array
     {
         $messages = [];
@@ -34,7 +38,8 @@ final class GroqPromptAdapter implements PromptAdapterInterface
 
         $tools = $prompt->getTools();
         if ($tools !== []) {
-            $body['tools'] = $tools;
+            $body['tools'] = $this->toolRegistry->getDefinitionsFor($tools);
+            $body['tool_choice'] = 'auto';
         }
 
         return $body;

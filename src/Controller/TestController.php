@@ -34,8 +34,6 @@ class TestController extends AbstractController
                 messages: [
                     ['role' => 'user', 'content' => $prompt],
                 ],
-                tools: [],
-                systemPrompt: null,
             );
             $response = $llm->complete($promptDto);
         } catch (\Throwable $e) {

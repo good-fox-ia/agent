@@ -17,7 +17,7 @@ final class TelegramAgentLlmReplySender
 {
     private const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
-    private const LLM_MAX_CONTEXT_MESSAGES = 80;
+    private const LLM_MAX_CONTEXT_MESSAGES = 20;
 
     private const LLM_SYSTEM_PROMPT = 'Ти корисний асистент. Відповідай українською, стисло та по суті.';
 
@@ -66,7 +66,6 @@ final class TelegramAgentLlmReplySender
     {
         return new PromptDTO(
             messages: $this->buildChatMessagesForLlm($telegramChatId),
-            tools: [],
             systemPrompt: self::LLM_SYSTEM_PROMPT,
         );
     }

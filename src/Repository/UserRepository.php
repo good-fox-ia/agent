@@ -28,4 +28,20 @@ final class UserRepository extends ServiceDocumentRepository
 
         return $user;
     }
+
+    public function findOneByUsername(string $username): ?User
+    {
+        $username = ltrim(trim($username), '@');
+        if ($username === '') {
+            return null;
+        }
+
+        return $this->createQueryBuilder()
+            ->field('username')->equals(new \MongoDB\BSON\Regex(
+                '^'.preg_quote($username, '/').'$',
+                'i',
+            ))
+            ->getQuery()
+            ->getSingleResult();
+    }
 }

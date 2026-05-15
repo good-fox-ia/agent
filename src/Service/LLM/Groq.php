@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Service\LLM;
 
+use App\Service\Http\Client;
+use App\Service\LLM\Adapter\PromptAdapterInterface;
 use App\Service\LLM\DTO\PromptDTO;
+use App\Service\LLM\Tool\ToolRegistry;
 
 class Groq extends AbstractLLM
 {
@@ -12,11 +15,26 @@ class Groq extends AbstractLLM
 
     private const TRANSCRIBE_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 
+    /** @see https://console.groq.com/docs/tool-use/local-tool-calling */
+    private const DEFAULT_CHAT_MODEL = 'openai/gpt-oss-120b';
+
+    private const MAX_TOOL_ITERATIONS = 5;
+
+    public function __construct(
+        string $apiKey,
+        Client $httpClient,
+        PromptAdapterInterface $promptAdapter,
+        private readonly ToolRegistry $toolRegistry,
+        private readonly string $defaultChatModel = self::DEFAULT_CHAT_MODEL,
+    ) {
+        parent::__construct($apiKey, $httpClient, $promptAdapter);
+    }
+
     public function complete(PromptDTO $prompt, array $options = []): string
     {
         if ($this->apiKey === '') throw new \InvalidArgumentException('GROQ_API_KEY is empty');
 
-        $model = $options['model'] ?? 'llama-3.3-70b-versatile';
+        $model = $options['model'] ?? $this->defaultChatModel;
 
         $extra = array_intersect_key($options, array_flip([
             'temperature',
@@ -35,11 +53,29 @@ class Groq extends AbstractLLM
             'model' => $model,
         ], $extra);
 
-        $decoded = $this->post(self::COMPLETE_URL, $body, self::getHeaders());
-        $content = $decoded['choices'][0]['message']['content'] ?? null;
-        if (!is_string($content)) throw new \RuntimeException('Groq response has no message content.');
+        for ($iteration = 0; $iteration < self::MAX_TOOL_ITERATIONS; ++$iteration) {
+            $decoded = $this->post(self::COMPLETE_URL, $body, self::getHeaders());
+            $message = $this->extractAssistantMessage($decoded);
 
-        return $content;
+            $toolCalls = $message['tool_calls'] ?? null;
+            if (!is_array($toolCalls) || $toolCalls === []) {
+                $content = $message['content'] ?? null;
+                if (!is_string($content) || $content === '') {
+                    throw new \RuntimeException('Groq response has no message content.');
+                }
+
+                return $content;
+            }
+
+            $messages[] = $message;
+            foreach ($toolCalls as $toolCall) {
+                $messages[] = $this->executeToolCall($toolCall);
+            }
+
+            $body['messages'] = $messages;
+        }
+
+        throw new \RuntimeException(sprintf('Groq tool calling exceeded %d iterations.', self::MAX_TOOL_ITERATIONS));
     }
 
     public function transcribeAudio(string $audioBinary, string $filename = 'audio.ogg', array $options = []): string
@@ -78,6 +114,64 @@ class Groq extends AbstractLLM
         if (!is_string($text)) throw new \RuntimeException('Groq transcription response has no text field.');
 
         return trim($text);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractAssistantMessage(array $decoded): array
+    {
+        $choices = $decoded['choices'] ?? null;
+        if (!is_array($choices) || $choices === []) {
+            throw new \RuntimeException('Groq response has no choices.');
+        }
+
+        $message = $choices[0]['message'] ?? null;
+        if (!is_array($message)) {
+            throw new \RuntimeException('Groq response has no assistant message.');
+        }
+
+        return $message;
+    }
+
+    /**
+     * @param array<string, mixed> $toolCall
+     *
+     * @return array{role: string, tool_call_id: string, name: string, content: string}
+     */
+    private function executeToolCall(array $toolCall): array
+    {
+        $toolCallId = $toolCall['id'] ?? null;
+        if (!is_string($toolCallId) || $toolCallId === '') {
+            throw new \RuntimeException('Groq tool call has no id.');
+        }
+
+        $function = $toolCall['function'] ?? null;
+        if (!is_array($function)) {
+            throw new \RuntimeException('Groq tool call has no function payload.');
+        }
+
+        $name = $function['name'] ?? null;
+        if (!is_string($name) || $name === '') {
+            throw new \RuntimeException('Groq tool call has no function name.');
+        }
+
+        $argumentsRaw = $function['arguments'] ?? '{}';
+        if (!is_string($argumentsRaw)) {
+            $argumentsRaw = '{}';
+        }
+
+        $arguments = json_decode($argumentsRaw, true);
+        if (!is_array($arguments)) {
+            throw new \RuntimeException(sprintf('Groq tool call "%s" has invalid JSON arguments.', $name));
+        }
+
+        return [
+            'role' => 'tool',
+            'tool_call_id' => $toolCallId,
+            'name' => $name,
+            'content' => $this->toolRegistry->executeTool($name, $arguments),
+        ];
     }
 
     private function getHeaders(): array
