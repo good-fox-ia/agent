@@ -31,33 +31,16 @@ final class ProcessTelegramMessageHandler
         if ($chatId === null) return;
 
         $this->persistence->syncParticipantsFromTelegramMessage($message);
-
-        $storedInbound = $this->persistence->recordInboundUserMessage($message);
+        $this->persistence->recordInboundUserMessage($message);
 
         if (isset($message['voice']['file_id']) || isset($message['audio']['file_id'])) {
             $this->bus->dispatch(new ProcessTelegramAudioMessage($message));
             $this->logger->info('Telegram inbound: queued audio chat={chat}', ['chat' => (string) $chatId]);
-
-            return;
         }
 
-        $textBody = TelegramMessageHelper::visibleTextBody($message);
-        if ($textBody !== '') {
+        if (TelegramMessageHelper::visibleTextBody($message) !== '') {
             $this->bus->dispatch(new ProcessTelegramTextMessage($message));
             $this->logger->info('Telegram inbound: queued text chat={chat}', ['chat' => (string) $chatId]);
-
-            return;
-        }
-
-        try {
-            $sent = $this->telegram->sendMessage($chatId, 'Надішліть текстове або голосове повідомлення.');
-            $this->persistence->recordAgentOutboundFromTelegramSend(
-                $sent,
-                TelegramMessageHelper::isGroup($message),
-                $storedInbound
-            );
-        } catch (\Throwable $e) {
-            $this->logger->error('sendMessage chat={chat}: {error}', ['chat' => (string) $chatId, 'error' => $e->getMessage()]);
         }
     }
 }

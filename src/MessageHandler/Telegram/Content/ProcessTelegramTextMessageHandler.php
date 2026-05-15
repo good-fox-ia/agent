@@ -14,26 +14,19 @@ use Symfony\Component\Messenger\MessageBusInterface;
 #[AsMessageHandler(fromTransport: 'telegram_messages')]
 final class ProcessTelegramTextMessageHandler
 {
-    public function __construct(
-        private readonly MessageBusInterface $bus,
-    ) {}
+    public function __construct(private readonly MessageBusInterface $bus) {}
 
     public function __invoke(ProcessTelegramTextMessage $message): void
     {
-        $payload = $message->message;
-        if (TelegramMessageHelper::visibleTextBody($payload) === '') {
-            return;
-        }
+        $payload = $message->message ?? [];
+        
+        if (TelegramMessageHelper::visibleTextBody($payload) === '') return;
 
-        $chatId = (int) ($payload['chat']['id'] ?? 0);
-        $messageId = (int) ($payload['message_id'] ?? 0);
-        if ($chatId === 0 || $messageId === 0) {
-            return;
-        }
+        $chatId = (int) ($payload['chat']['id'] ?? null);
+        $messageId = (int) ($payload['message_id'] ?? null);
+        if ($chatId === null || $messageId === null) return;
 
-        $isGroup = TelegramMessageHelper::isGroup($payload);
-
-        if ($isGroup) {
+        if (TelegramMessageHelper::isGroup($payload)) {
             $this->bus->dispatch(new ProcessTelegramGroupMessage($chatId, $messageId));
         } else {
             $this->bus->dispatch(new ProcessTelegramPrivateMessage($chatId, $messageId));

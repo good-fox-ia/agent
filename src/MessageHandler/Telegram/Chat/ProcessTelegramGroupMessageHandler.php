@@ -12,7 +12,7 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 final class ProcessTelegramGroupMessageHandler
 {
     public function __construct(
-        private readonly TelegramAgentLlmReplySender $agentLlmReplySender,
+        private readonly TelegramAgentLlmReplySender $agentLlmReplySender
     ) {}
 
     public function __invoke(ProcessTelegramGroupMessage $job): void
