@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# shellcheck source=lib/compose-env.sh
+source "$(dirname "$0")/lib/compose-env.sh"
+
+cd_to_project_root
+init_compose_dev
+
+echo "→ Збірка і старт контейнерів (dev)..."
+"${COMPOSE[@]}" up -d --build
+
+wait_for_php_service COMPOSE
+
+echo "→ Composer install..."
+"${COMPOSE[@]}" exec -T php composer install --no-interaction
+
+echo "→ Перезапуск telegram-poll і messenger-worker..."
+"${COMPOSE[@]}" restart telegram-poll messenger-worker
+
+echo ""
+echo "Готово. Статус контейнерів:"
+"${COMPOSE[@]}" ps
+
+echo ""
+echo "Логи бота:"
+echo "  ${COMPOSE[*]} logs -f telegram-poll messenger-worker"

@@ -1,5 +1,5 @@
-# PHP-FPM з розширеннями для Symfony + MongoDB, Redis, RabbitMQ (AMQP)
-FROM php:8.4-fpm-bookworm
+# PHP CLI з розширеннями для Symfony + MongoDB, Redis, RabbitMQ (AMQP)
+FROM php:8.4-cli-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

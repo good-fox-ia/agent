@@ -28,9 +28,16 @@ services:
         App\Service\LLM\Tool\ToolInterface:
             tags: ['app.llm.tool']
 
+        App\Service\Telegram\Command\CommandProcessInterface:
+            tags: ['app.telegram.command_process']
+
     App\Service\LLM\Tool\ToolRegistry:
         arguments:
             $tools: !tagged_iterator app.llm.tool
+
+    App\Service\Telegram\Command\CommandProcessor:
+        arguments:
+            $processes: !tagged_iterator app.telegram.command_process
 
     App\Service\LLM\Groq:
         arguments:

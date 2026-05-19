@@ -7,9 +7,9 @@ namespace App\MessageHandler\Telegram;
 use App\Message\Telegram\Content\ProcessTelegramAudioMessage;
 use App\Message\Telegram\Content\ProcessTelegramTextMessage;
 use App\Message\Telegram\ProcessTelegramMessage;
+use App\Service\Telegram\Command\CommandProcessor;
 use App\Service\Telegram\TelegramMessageHelper;
 use App\Service\Telegram\TelegramPersistenceService;
-use App\Service\Telegram\TelegramService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -20,7 +20,7 @@ final class ProcessTelegramMessageHandler
     public function __construct(
         private readonly TelegramPersistenceService $persistence,
         private readonly MessageBusInterface $bus,
-        private readonly TelegramService $telegram,
+        private readonly CommandProcessor $commandProcessor,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -31,7 +31,11 @@ final class ProcessTelegramMessageHandler
         if ($chatId === null) return;
 
         $this->persistence->syncParticipantsFromTelegramMessage($message);
-        $this->persistence->recordInboundUserMessage($message);
+        $inbound = $this->persistence->recordInboundUserMessage($message);
+
+        if ($this->commandProcessor->tryProcess($message, $inbound)) {
+            return;
+        }
 
         if (isset($message['voice']['file_id']) || isset($message['audio']['file_id'])) {
             $this->bus->dispatch(new ProcessTelegramAudioMessage($message));

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# shellcheck source=lib/compose-env.sh
+source "$(dirname "$0")/lib/compose-env.sh"
+
+cd_to_project_root
+require_env_file .env.local
+require_prod_secrets
+init_compose_prod
+
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "→ git pull..."
+  git pull --ff-only
+fi
+
+echo "→ Збірка і старт (production)..."
+"${COMPOSE[@]}" up -d --build
+
+wait_for_php_service COMPOSE
+
+echo "→ Composer install (prod)..."
+"${COMPOSE[@]}" exec -T php composer install --no-dev --no-interaction --optimize-autoloader
+
+echo "→ Symfony cache (prod)..."
+"${COMPOSE[@]}" exec -T php php bin/console cache:clear --env=prod --no-warmup
+"${COMPOSE[@]}" exec -T php php bin/console cache:warmup --env=prod
+
+echo "→ Перезапуск telegram-poll і messenger-worker..."
+"${COMPOSE[@]}" restart telegram-poll messenger-worker
+
+echo ""
+echo "Готово. Статус контейнерів:"
+"${COMPOSE[@]}" ps
+
+echo ""
+echo "Логи бота:"
+echo "  ${COMPOSE[*]} logs -f telegram-poll messenger-worker"
+
+echo ""
+echo "Зовнішній доступ (замініть localhost на IP сервера):"
+echo "  MongoDB:  mongodb://\${MONGODB_ROOT_USERNAME}:***@<server>:27017/?authSource=admin"
+echo "  RabbitMQ UI: http://<server>:15672 (AMQP 5672 — лише всередині Docker)"

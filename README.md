@@ -1,6 +1,6 @@
 # Agent (Symfony)
 
-Проєкт розрахований на роботу в **Docker**: PHP-FPM, Nginx, MongoDB, Redis і RabbitMQ піднімаються через `docker compose`.
+Проєкт розрахований на роботу в **Docker**: PHP-бот (long polling + Messenger), MongoDB, Redis і RabbitMQ. **Зовнішній HTTP для додатку не відкритий** — оновлення йдуть із Telegram API, відповіді надсилаються назовні з контейнера.
 
 ## Вимоги
 
@@ -11,40 +11,75 @@
 1. **Змінні середовища**  
    Скопіюйте та налаштуйте `.env` / `.env.local` (секрети краще тримати в `.env.local`, він не має потрапляти в git). Мінімум для Telegram-бота та LLM зазвичай потрібні `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, а також `APP_SECRET` для Symfony.
 
-2. **Збірка і старт контейнерів** (з кореня репозиторію):
+2. **Запуск усього проєкту** (з кореня репозиторію):
 
    ```bash
-   docker compose up -d --build
+   ./bin/start
    ```
 
-3. **Залежності PHP** (один раз після клону або оновлення `composer.lock`):
+   Скрипт виконує: `docker compose up -d --build`, `composer install`, перезапуск `telegram-poll` і `messenger-worker`.
+
+   Зупинка:
 
    ```bash
-   docker compose exec php composer install
+   ./bin/stop
    ```
-
-4. **Додаток у браузері**  
-   HTTP: [http://localhost:8080](http://localhost:8080)
 
 ## Корисні адреси після `up`
 
 | Сервіс    | Адреса |
 |-----------|--------|
-| Додаток   | http://localhost:8080 |
-| MongoDB   | `localhost:27017` (з хоста; у PHP-контейнері — `mongodb:27017`) |
+| MongoDB   | `localhost:27017` (з хоста; у контейнерах — `mongodb:27017`) |
 | Redis     | `localhost:6379` |
-| RabbitMQ  | AMQP `localhost:5672`; веб-UI керування: http://localhost:15672 (логін/пароль за замовчуванням: `guest` / `guest`) |
+| RabbitMQ  | AMQP лише всередині Docker (`rabbitmq:5672`); веб-UI: http://localhost:15672 |
 
-У сервісі `php` у `docker-compose.yml` уже задані `MONGODB_URI`, `REDIS_URL` і `MESSENGER_TRANSPORT_DSN` для імен хостів усередині мережі Docker — вони перекривають локальні значення з `.env` під час роботи в контейнері.
+У сервісах PHP у `docker-compose.yml` уже задані `MONGODB_URI`, `REDIS_URL` і `MESSENGER_TRANSPORT_DSN` для імен хостів усередині мережі Docker.
 
-## Щоденні команди
+## Сервіси бота
+
+| Сервіс | Призначення |
+|--------|-------------|
+| `telegram-poll` | Long polling `getUpdates` → черга `telegram_inbound` |
+| `messenger-worker` | Обробка всіх Telegram-черг Messenger |
+| `php` | Тільки для `composer` і `bin/console` (`sleep infinity`) |
+
+Логи:
+
+```bash
+docker compose logs -f telegram-poll
+docker compose logs -f messenger-worker
+```
+
+## Деплой на сервер (Ubuntu / production)
+
+1. Скопіюйте змінні: `cp .env.example .env.local` і заповніть секрети (`APP_SECRET`, `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, `MONGODB_ROOT_*`, `RABBITMQ_*`).
+2. Запуск / оновлення (git pull, build, composer prod, cache, воркери):
+
+   ```bash
+   ./bin/deploy
+   ```
+
+3. Зупинка:
+
+   ```bash
+   ./bin/deploy-stop
+   ```
+
+Порти **27017** (MongoDB) і **15672** (RabbitMQ UI) відкриті ззовні; AMQP **5672** — лише в мережі Docker. Паролі беруться з `.env.local` (файл не комітиться).
+
+> **Увага:** якщо MongoDB уже працювала без auth, увімкнення `MONGO_INITDB_ROOT_*` на існуючому volume не ввімкне auth автоматично — потрібен новий volume або ручне налаштування користувача.
+
+## Щоденні команди (локально, dev)
 
 | Дія | Команда |
 |-----|---------|
-| Запуск у фоні | `docker compose up -d` |
-| Зупинка | `docker compose down` |
-| Логи (наприклад, PHP) | `docker compose logs -f php` |
-| Symfony Console | `docker compose exec php php bin/console` |
+| Запуск усього | `./bin/start` |
+| Зупинка | `./bin/stop` |
+| Деплой / оновлення на сервері | `./bin/deploy` |
+| Зупинка production-стеку | `./bin/deploy-stop` |
+| Symfony Console (dev) | `docker compose exec php php bin/console` |
+| Symfony Console (prod) | `docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env --env-file .env.local exec php php bin/console` |
+| Статистика черг | `docker compose exec php php bin/console messenger:stats` |
 
 Приклад:
 
@@ -52,24 +87,11 @@
 docker compose exec php php bin/console cache:clear
 ```
 
-## Telegram і Messenger
-
-Long polling оновлень з Telegram (окремий довгоживучий процес):
+Ручний запуск polling або воркера (якщо зупинили відповідний сервіс):
 
 ```bash
 docker compose exec php php bin/console app:telegram:event-updates
-```
-
-Обробка черг Messenger (воркери; можна запустити кілька терміналів або один процес з кількома транспортами):
-
-```bash
 docker compose exec php php bin/console messenger:consume telegram_inbound telegram_messages telegram_audio telegram_message_private telegram_message_group -vv
-```
-
-Перегляд черг і помилок:
-
-```bash
-docker compose exec php php bin/console messenger:stats
 ```
 
 ## Оновлення після змін у `composer.json`

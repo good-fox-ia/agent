@@ -53,29 +53,7 @@ class Groq extends AbstractLLM
             'model' => $model,
         ], $extra);
 
-        for ($iteration = 0; $iteration < self::MAX_TOOL_ITERATIONS; ++$iteration) {
-            $decoded = $this->post(self::COMPLETE_URL, $body, self::getHeaders());
-            $message = $this->extractAssistantMessage($decoded);
-
-            $toolCalls = $message['tool_calls'] ?? null;
-            if (!is_array($toolCalls) || $toolCalls === []) {
-                $content = $message['content'] ?? null;
-                if (!is_string($content) || $content === '') {
-                    throw new \RuntimeException('Groq response has no message content.');
-                }
-
-                return $content;
-            }
-
-            $messages[] = $message;
-            foreach ($toolCalls as $toolCall) {
-                $messages[] = $this->executeToolCall($toolCall);
-            }
-
-            $body['messages'] = $messages;
-        }
-
-        throw new \RuntimeException(sprintf('Groq tool calling exceeded %d iterations.', self::MAX_TOOL_ITERATIONS));
+        return $this->sendPrompt($body);
     }
 
     public function transcribeAudio(string $audioBinary, string $filename = 'audio.ogg', array $options = []): string
@@ -114,6 +92,31 @@ class Groq extends AbstractLLM
         if (!is_string($text)) throw new \RuntimeException('Groq transcription response has no text field.');
 
         return trim($text);
+    }
+
+    private function sendPrompt(array $body): string
+    {
+        for ($iteration = 0; $iteration < self::MAX_TOOL_ITERATIONS; ++$iteration) {
+            $decoded = $this->post(self::COMPLETE_URL, $body, self::getHeaders());
+            $message = $this->extractAssistantMessage($decoded);
+
+            $toolCalls = $message['tool_calls'] ?? null;
+            if (!is_array($toolCalls) || $toolCalls === []) {
+                $content = $message['content'] ?? null;
+                if (!is_string($content) || $content === '') throw new \RuntimeException('Groq response has no message content.');
+
+                return $content;
+            }
+
+            $messages[] = $message;
+            foreach ($toolCalls as $toolCall) {
+                $messages[] = $this->executeToolCall($toolCall);
+            }
+
+            $body['messages'] = $messages;
+        }
+
+        throw new \RuntimeException(sprintf('Groq tool calling exceeded %d iterations.', self::MAX_TOOL_ITERATIONS));
     }
 
     /**

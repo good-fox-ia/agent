@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# shellcheck source=lib/compose-env.sh
+source "$(dirname "$0")/lib/compose-env.sh"
+
+cd_to_project_root
+init_compose_prod
+
+echo "→ Зупинка production-стеку..."
+"${COMPOSE[@]}" down
+
+echo "Готово."

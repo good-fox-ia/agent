@@ -1,0 +1,40 @@
+# Production override: ./bin/deploy
+# Потрібні змінні в .env.local — див. .env.example (MONGODB_ROOT_*, RABBITMQ_*).
+
+x-php-prod-environment: &php-prod-environment
+  APP_ENV: prod
+  APP_DEBUG: "0"
+  MONGODB_URI: mongodb://${MONGODB_ROOT_USERNAME}:${MONGODB_ROOT_PASSWORD}@mongodb:27017/?authSource=admin
+  MESSENGER_TRANSPORT_DSN: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
+
+services:
+  php:
+    environment:
+      <<: *php-prod-environment
+
+  telegram-poll:
+    environment:
+      <<: *php-prod-environment
+
+  messenger-worker:
+    environment:
+      <<: *php-prod-environment
+    command:
+      - php
+      - bin/console
+      - messenger:consume
+      - telegram_inbound
+      - telegram_messages
+      - telegram_audio
+      - telegram_message_private
+      - telegram_message_group
+
+  mongodb:
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_ROOT_PASSWORD}
+
+  rabbitmq:
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
