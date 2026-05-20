@@ -1,10 +1,11 @@
 # Production override: ./bin/deploy
-# Потрібні змінні в .env.local — див. .env.example (MONGODB_ROOT_*, RABBITMQ_*).
+# Потрібні змінні в .env.local — MONGODB_DB, MONGODB_ROOT_*, RABBITMQ_*.
 
 x-php-prod-environment: &php-prod-environment
   APP_ENV: prod
   APP_DEBUG: "0"
   MONGODB_URI: mongodb://${MONGODB_ROOT_USERNAME}:${MONGODB_ROOT_PASSWORD}@mongodb:27017/?authSource=admin
+  MONGODB_DB: ${MONGODB_DB}
   MESSENGER_TRANSPORT_DSN: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
 
 services:
@@ -33,6 +34,7 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGODB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGODB_DB}
 
   rabbitmq:
     environment:

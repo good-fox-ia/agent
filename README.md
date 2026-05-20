@@ -52,7 +52,7 @@ docker compose logs -f messenger-worker
 
 ## Деплой на сервер (Ubuntu / production)
 
-1. Скопіюйте змінні: `cp .env.example .env.local` і заповніть секрети (`APP_SECRET`, `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, `MONGODB_ROOT_*`, `RABBITMQ_*`).
+1. Скопіюйте змінні: `cp .env.example .env.local` і заповніть секрети (`APP_SECRET`, `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, `MONGODB_DB`, `MONGODB_ROOT_*`, `RABBITMQ_*`).
 2. Запуск / оновлення (git pull, build, composer prod, cache, воркери):
 
    ```bash

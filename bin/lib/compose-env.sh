@@ -50,6 +50,7 @@ require_prod_secrets() {
   set +a
 
   local missing=()
+  [[ -z "${MONGODB_DB:-}" ]] && missing+=(MONGODB_DB)
   [[ -z "${MONGODB_ROOT_USERNAME:-}" ]] && missing+=(MONGODB_ROOT_USERNAME)
   [[ -z "${MONGODB_ROOT_PASSWORD:-}" ]] && missing+=(MONGODB_ROOT_PASSWORD)
   [[ -z "${RABBITMQ_USER:-}" ]] && missing+=(RABBITMQ_USER)

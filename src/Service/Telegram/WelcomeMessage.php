@@ -22,7 +22,10 @@ final class WelcomeMessage
         private readonly LoggerInterface $logger,
     ) {}
 
-    public function send(array $telegramMessage, ?Message $inbound): void
+    /**
+     * @param array<string, mixed>|null $replyMarkup
+     */
+    public function send(array $telegramMessage, ?Message $inbound, ?array $replyMarkup = null): void
     {
         $chatId = (int) ($telegramMessage['chat']['id'] ?? 0);
         if ($chatId === 0) {
@@ -43,7 +46,11 @@ final class WelcomeMessage
 
         try {
             $text = mb_substr(self::buildText(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
-            $sent = $this->telegram->sendMessage($chatId, $text, ['parse_mode' => 'HTML']);
+            $options = ['parse_mode' => 'HTML'];
+            if ($replyMarkup !== null && !$isGroup) {
+                $options['reply_markup'] = $replyMarkup;
+            }
+            $sent = $this->telegram->sendMessage($chatId, $text, $options);
             $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
             $this->logger->info('Welcome надіслано в chat {chat}', ['chat' => $chatId]);
         } catch (\Throwable $e) {

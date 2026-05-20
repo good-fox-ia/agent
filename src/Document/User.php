@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace App\Document;
 
 use App\Repository\UserRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Document;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Field;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Id;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Index;
+use Doctrine\ODM\MongoDB\Mapping\Attribute\ReferenceMany;
+use Doctrine\ODM\MongoDB\Mapping\Attribute\ReferenceOne;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 
 #[Document(
     collection: 'users',
@@ -40,6 +45,17 @@ final class User
     #[Field(type: 'bool', nullable: true)]
     private ?bool $isPremium = null;
 
+    /** @var Collection<int, User> */
+    #[ReferenceMany(targetDocument: self::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
+    private Collection $friends;
+
+    /** @var Collection<int, Chat> */
+    #[ReferenceMany(targetDocument: Chat::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
+    private Collection $chats;
+
+    #[ReferenceOne(targetDocument: Chat::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
+    private ?Chat $currentChat = null;
+
     #[Field(type: 'date_immutable')]
     private \DateTimeImmutable $createdAt;
 
@@ -49,6 +65,8 @@ final class User
     public function __construct(int $telegramUserId)
     {
         $this->telegramUserId = $telegramUserId;
+        $this->friends = new ArrayCollection();
+        $this->chats = new ArrayCollection();
         $this->createdAt = new \DateTimeImmutable();
         $this->updatedAt = $this->createdAt;
     }
@@ -119,6 +137,76 @@ final class User
     public function setIsPremium(?bool $isPremium): self
     {
         $this->isPremium = $isPremium;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function getFriends(): Collection
+    {
+        return $this->friends;
+    }
+
+    public function addFriend(User $friend): self
+    {
+        if ($friend !== $this && !$this->friends->contains($friend)) {
+            $this->friends->add($friend);
+            $this->touchUpdatedAt();
+        }
+
+        return $this;
+    }
+
+    public function removeFriend(User $friend): self
+    {
+        if ($this->friends->removeElement($friend)) {
+            $this->touchUpdatedAt();
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Chat>
+     */
+    public function getChats(): Collection
+    {
+        return $this->chats;
+    }
+
+    public function addChat(Chat $chat): self
+    {
+        if (!$this->chats->contains($chat)) {
+            $this->chats->add($chat);
+            $this->touchUpdatedAt();
+        }
+
+        return $this;
+    }
+
+    public function removeChat(Chat $chat): self
+    {
+        if ($this->chats->removeElement($chat)) {
+            if ($this->currentChat === $chat) {
+                $this->currentChat = null;
+            }
+            $this->touchUpdatedAt();
+        }
+
+        return $this;
+    }
+
+    public function getCurrentChat(): ?Chat
+    {
+        return $this->currentChat;
+    }
+
+    public function setCurrentChat(?Chat $currentChat): self
+    {
+        $this->currentChat = $currentChat;
+        $this->touchUpdatedAt();
 
         return $this;
     }

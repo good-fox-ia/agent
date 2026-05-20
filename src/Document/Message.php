@@ -40,6 +40,9 @@ final class Message
     #[ReferenceOne(targetDocument: Group::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
     private ?Group $group = null;
 
+    #[ReferenceOne(targetDocument: Chat::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
+    private ?Chat $chat = null;
+
     #[ReferenceOne(targetDocument: self::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
     private ?Message $replyTo = null;
 
@@ -109,6 +112,18 @@ final class Message
     public function setGroup(?Group $group): self
     {
         $this->group = $group;
+
+        return $this;
+    }
+
+    public function getChat(): ?Chat
+    {
+        return $this->chat;
+    }
+
+    public function setChat(?Chat $chat): self
+    {
+        $this->chat = $chat;
 
         return $this;
     }

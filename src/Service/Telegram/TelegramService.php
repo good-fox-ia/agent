@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Service\Telegram;
 
 use App\Service\Http\Client;
@@ -8,7 +10,7 @@ class TelegramService
 {
     public function __construct(
         private readonly string $token,
-        private readonly Client $httpClient
+        private readonly Client $httpClient,
     ) {}
 
     public function isConfigured(): bool
@@ -18,40 +20,53 @@ class TelegramService
 
     public function sendMessage(string|int $chatId, string $text, array $options = []): array
     {
-        $this->assertToken();
-
-        $url = sprintf('https://api.telegram.org/bot%s/sendMessage', $this->token);
-
-        $body = array_merge([
-            'chat_id' => $chatId,
-            'text' => $text,
-        ], $options);
-
-        $decoded = $this->httpClient->post($url, $body);
-        $this->isValidDecoded($decoded);
+        $body = array_merge(['chat_id' => $chatId, 'text' => $text], $options);
+        $decoded = $this->callApi('sendMessage', $body);
 
         return $decoded['result'] ?? $decoded;
     }
 
+    public function removeReplyKeyboard(string|int $chatId, string $text = ''): array
+    {
+        return $this->sendMessage($chatId, $text, ['reply_markup' => ['remove_keyboard' => true]]);
+    }
+
+    public function deleteMessage(string|int $chatId, int $messageId): bool
+    {
+        try {
+            $this->callApi('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Намагається видалити повідомлення в чаті (останні $sweepLimit id до $upToMessageId включно).
+     */
+    public function clearChat(string|int $chatId, ?int $upToMessageId = null, int $sweepLimit = 200): void
+    {
+        if ($upToMessageId === null || $upToMessageId <= 0) {
+            return;
+        }
+
+        $from = max(1, $upToMessageId - $sweepLimit + 1);
+        for ($messageId = $upToMessageId; $messageId >= $from; $messageId--) {
+            $this->deleteMessage($chatId, $messageId);
+        }
+    }
+
     public function getUpdates(int $offset = 0, int $timeout = 30, int $limit = 100): array
     {
-        $this->assertToken();
-
-        $url = sprintf('https://api.telegram.org/bot%s/getUpdates', $this->token);
-
-        $decoded = $this->httpClient->post($url, ['offset' => $offset, 'timeout' => $timeout, 'limit' => $limit]);
-        $this->isValidDecoded($decoded);
+        $decoded = $this->callApi('getUpdates', ['offset' => $offset, 'timeout' => $timeout, 'limit' => $limit]);
 
         return $decoded['result'] ?? [];
     }
 
     public function getFile(string $fileId): array
     {
-        $this->assertToken();
-
-        $url = sprintf('https://api.telegram.org/bot%s/getFile', $this->token);
-        $decoded = $this->httpClient->post($url, ['file_id' => $fileId]);
-        $this->isValidDecoded($decoded);
+        $decoded = $this->callApi('getFile', ['file_id' => $fileId]);
 
         $result = $decoded['result'] ?? null;
         if (!is_array($result)) throw new \RuntimeException('Telegram getFile: empty result.');
@@ -66,6 +81,17 @@ class TelegramService
         $url = sprintf('https://api.telegram.org/file/bot%s/%s', $this->token, $filePath);
 
         return $this->httpClient->get($url);
+    }
+
+    private function callApi(string $method, array $body): array
+    {
+        $this->assertToken();
+
+        $url = sprintf('https://api.telegram.org/bot%s/%s', $this->token, $method);
+        $decoded = $this->httpClient->post($url, $body);
+        $this->isValidDecoded($decoded);
+
+        return $decoded;
     }
 
     private function assertToken(): void

@@ -42,6 +42,20 @@ final class MessageRepository extends ServiceDocumentRepository
         return $stored;
     }
 
+    public function deleteAllForTelegramChat(int $telegramChatId): void
+    {
+        $messages = $this->findBy(['telegramChatId' => $telegramChatId]);
+        if ($messages === []) {
+            return;
+        }
+
+        $dm = $this->getDocumentManager();
+        foreach ($messages as $message) {
+            $dm->remove($message);
+        }
+        $dm->flush();
+    }
+
     /**
      * @param array<string, mixed> $telegramMessage об'єкт message з Telegram API
      */
