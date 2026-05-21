@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssh-dev \
     pkg-config \
     libssl-dev \
+    libzstd-dev \
     && docker-php-ext-configure intl \
     && docker-php-ext-install -j"$(nproc)" intl opcache zip \
     && pecl install redis mongodb amqp \
