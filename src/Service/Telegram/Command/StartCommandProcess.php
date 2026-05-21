@@ -6,7 +6,6 @@ namespace App\Service\Telegram\Command;
 
 use App\Document\Message;
 use App\Enum\TelegramBotCommand;
-use App\Service\Telegram\Keyboard\ReplyKeyboard;
 use App\Service\Telegram\WelcomeMessage;
 
 final class StartCommandProcess implements CommandProcessInterface
@@ -22,6 +21,6 @@ final class StartCommandProcess implements CommandProcessInterface
 
     public function onProcess(array $telegramMessage, ?Message $inbound): void
     {
-        $this->welcomeMessage->send($telegramMessage, $inbound, ReplyKeyboard::markup());
+        $this->welcomeMessage->send($telegramMessage, $inbound);
     }
 }

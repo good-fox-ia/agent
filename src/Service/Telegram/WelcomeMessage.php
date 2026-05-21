@@ -6,6 +6,8 @@ namespace App\Service\Telegram;
 
 use App\Document\Message;
 use App\Repository\MessageRepository;
+use App\Repository\UserRepository;
+use App\Service\Telegram\Keyboard\UserReplyMarkupResolver;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -19,13 +21,12 @@ final class WelcomeMessage
         private readonly TelegramService $telegram,
         private readonly TelegramPersistenceService $persistence,
         private readonly MessageRepository $messages,
+        private readonly UserRepository $users,
+        private readonly UserReplyMarkupResolver $replyMarkup,
         private readonly LoggerInterface $logger,
     ) {}
 
-    /**
-     * @param array<string, mixed>|null $replyMarkup
-     */
-    public function send(array $telegramMessage, ?Message $inbound, ?array $replyMarkup = null): void
+    public function send(array $telegramMessage, ?Message $inbound): void
     {
         $chatId = (int) ($telegramMessage['chat']['id'] ?? 0);
         if ($chatId === 0) {
@@ -47,8 +48,12 @@ final class WelcomeMessage
         try {
             $text = mb_substr(self::buildText(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
             $options = ['parse_mode' => 'HTML'];
-            if ($replyMarkup !== null && !$isGroup) {
-                $options['reply_markup'] = $replyMarkup;
+            if (!$isGroup) {
+                $from = $telegramMessage['from'] ?? null;
+                if (is_array($from) && isset($from['id'])) {
+                    $user = $this->users->upsertFromTelegramFromPayload($from);
+                    $options = $this->replyMarkup->applyForUser($user, $options);
+                }
             }
             $sent = $this->telegram->sendMessage($chatId, $text, $options);
             $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
@@ -76,6 +81,7 @@ final class WelcomeMessage
 🎤 Або <b>надішли голосове</b> — розпізнаю мову і так відповім.
 
 💡 Команда <code>/help</code> — короткі підказки.
+⌨️ <code>/keyboardon</code> та <code>/keyboardoff</code> — увімкнути або вимкнути кнопки внизу екрана.
 TEXT;
     }
 }

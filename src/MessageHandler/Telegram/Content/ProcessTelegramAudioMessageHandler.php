@@ -12,6 +12,7 @@ use App\Service\LLM\LLMInterface;
 use App\Service\Telegram\TelegramMessageHelper;
 use App\Service\Telegram\TelegramPersistenceService;
 use App\Service\Telegram\TelegramService;
+use App\Service\Telegram\TelegramUserMessageSender;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -23,6 +24,7 @@ final class ProcessTelegramAudioMessageHandler
 
     public function __construct(
         private readonly TelegramService $telegram,
+        private readonly TelegramUserMessageSender $messageSender,
         private readonly LLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly TelegramPersistenceService $persistence,
@@ -61,7 +63,7 @@ final class ProcessTelegramAudioMessageHandler
             $transcript = $this->llm->transcribeAudio($binary, $audioFilename, ['language' => 'uk']);
 
             if ($transcript === '') {
-                $sent = $this->telegram->sendMessage($chatId, 'Не вдалося розпізнати мову. Спробуйте ще раз голосом.');
+                $sent = $this->messageSender->send($telegramChatId, 'Не вдалося розпізнати мову. Спробуйте ще раз голосом.', $isGroup);
                 $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
 
                 return;
@@ -86,9 +88,10 @@ final class ProcessTelegramAudioMessageHandler
         } catch (\Throwable $e) {
             $this->logger->error('voice/audio chat={chat}: {error}', ['chat' => (string) $chatId, 'error' => $e->getMessage()]);
             try {
-                $sent = $this->telegram->sendMessage(
-                    $chatId,
+                $sent = $this->messageSender->send(
+                    $telegramChatId,
                     mb_substr('Помилка обробки аудіо: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
+                    $isGroup,
                 );
                 $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
             } catch (\Throwable) {

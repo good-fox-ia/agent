@@ -8,6 +8,7 @@ use App\Enum\ToolName;
 use App\Repository\UserRepository;
 use App\Service\Telegram\TelegramPersistenceService;
 use App\Service\Telegram\TelegramService;
+use App\Service\Telegram\TelegramUserMessageSender;
 
 final class SendTelegramMessageTool implements ToolInterface
 {
@@ -16,6 +17,7 @@ final class SendTelegramMessageTool implements ToolInterface
     public function __construct(
         private readonly UserRepository $users,
         private readonly TelegramService $telegram,
+        private readonly TelegramUserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
     ) {}
 
@@ -77,7 +79,7 @@ final class SendTelegramMessageTool implements ToolInterface
         $text = mb_substr($message, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
 
         try {
-            $sent = $this->telegram->sendMessage($user->getTelegramUserId(), $text);
+            $sent = $this->messageSender->sendToUser($user, $text);
             $this->persistence->recordAgentOutboundFromTelegramSend($sent, false, null);
         } catch (\Throwable $e) {
             return json_encode([

@@ -9,6 +9,8 @@ enum TelegramBotCommand: string
     case START = 'start';
     case HELP = 'help';
     case NEW_CHAT = 'newchat';
+    case KEYBOARD_ON = 'keyboardon';
+    case KEYBOARD_OFF = 'keyboardoff';
 
     public function asSlash(): string
     {

@@ -9,9 +9,8 @@ use App\Enum\TelegramBotCommand;
 use App\Repository\ChatRepository;
 use App\Repository\MessageRepository;
 use App\Repository\UserRepository;
-use App\Service\Telegram\Keyboard\ReplyKeyboard;
 use App\Service\Telegram\TelegramPersistenceService;
-use App\Service\Telegram\TelegramService;
+use App\Service\Telegram\TelegramUserMessageSender;
 use Psr\Log\LoggerInterface;
 
 final class NewChatCommandProcess implements CommandProcessInterface
@@ -23,6 +22,7 @@ final class NewChatCommandProcess implements CommandProcessInterface
         private readonly ChatRepository $chats,
         private readonly MessageRepository $messages,
         private readonly TelegramService $telegram,
+        private readonly TelegramUserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
         private readonly LoggerInterface $logger,
     ) {}
@@ -59,9 +59,7 @@ final class NewChatCommandProcess implements CommandProcessInterface
             //$this->messages->deleteAllForTelegramChat($chatId);
             $this->telegram->clearChat($chatId, $messageId);
 
-            $sent = $this->telegram->sendMessage($chatId, self::CONFIRMATION_TEXT, [
-                'reply_markup' => ReplyKeyboard::markup(),
-            ]);
+            $sent = $this->messageSender->sendToUser($user, self::CONFIRMATION_TEXT);
             $this->persistence->recordAgentOutboundFromTelegramSend($sent, false, null);
         } catch (\Throwable $e) {
             $this->logger->error('Помилка створення нового чату chat={chat}: {error}', [

@@ -30,11 +30,12 @@ final class TelegramPersistenceService
         if (!is_array($chat) || !isset($chat['id'])) return;
 
         try {
-            $group = $this->groups->upsertFromTelegramChatPayload($chat);
             $from = $message['from'] ?? null;
             if (is_array($from) && isset($from['id'])) {
                 $user = $this->users->upsertFromTelegramFromPayload($from);
-                $group->addUser($user);
+                if (TelegramMessageHelper::isGroup($message)) {
+                    $this->groups->upsertFromTelegramChatPayload($chat)->addUser($user);
+                }
             }
             $this->documentManager->flush();
         } catch (\Throwable $e) {

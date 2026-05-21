@@ -45,6 +45,9 @@ final class User
     #[Field(type: 'bool', nullable: true)]
     private ?bool $isPremium = null;
 
+    #[Field(type: 'bool', nullable: true)]
+    private ?bool $activeKeyboard = null;
+
     /** @var Collection<int, User> */
     #[ReferenceMany(targetDocument: self::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
     private Collection $friends;
@@ -137,6 +140,19 @@ final class User
     public function setIsPremium(?bool $isPremium): self
     {
         $this->isPremium = $isPremium;
+
+        return $this;
+    }
+
+    public function isActiveKeyboard(): bool
+    {
+        return $this->activeKeyboard ?? true;
+    }
+
+    public function setActiveKeyboard(bool $activeKeyboard): self
+    {
+        $this->activeKeyboard = $activeKeyboard;
+        $this->touchUpdatedAt();
 
         return $this;
     }

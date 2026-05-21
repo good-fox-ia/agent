@@ -23,6 +23,7 @@ final class TelegramAgentLlmReplySender
 
     public function __construct(
         private readonly TelegramService $telegram,
+        private readonly TelegramUserMessageSender $messageSender,
         private readonly LLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly TelegramPersistenceService $persistence,
@@ -42,7 +43,7 @@ final class TelegramAgentLlmReplySender
         try {
             $answer = $this->llm->complete($this->buildPromptDtoForChat($telegramChatId));
             $answer = mb_substr($answer, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
-            $sent = $this->telegram->sendMessage($telegramChatId, $answer);
+            $sent = $this->messageSender->send($telegramChatId, $answer, $isGroup);
             $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
             $this->logger->info('Відповідь агента надіслано в chat {chat}', ['chat' => $telegramChatId]);
         } catch (\Throwable $e) {
@@ -51,9 +52,10 @@ final class TelegramAgentLlmReplySender
                 'error' => $e->getMessage(),
             ]);
             try {
-                $sent = $this->telegram->sendMessage(
+                $sent = $this->messageSender->send(
                     $telegramChatId,
                     mb_substr('Помилка: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
+                    $isGroup,
                 );
                 $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
             } catch (\Throwable) {

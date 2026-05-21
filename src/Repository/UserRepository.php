@@ -29,6 +29,11 @@ final class UserRepository extends ServiceDocumentRepository
         return $user;
     }
 
+    public function findOneByTelegramUserId(int $telegramUserId): ?User
+    {
+        return $this->findOneBy(['telegramUserId' => $telegramUserId]);
+    }
+
     public function findOneByUsername(string $username): ?User
     {
         $username = ltrim(trim($username), '@');
