@@ -17,8 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libbsd0 \
     && docker-php-ext-configure intl \
     && docker-php-ext-install -j"$(nproc)" intl opcache zip \
-    && pecl install redis mongodb amqp \
+    && pecl install redis amqp \
+    && LDFLAGS="-lbsd" LIBS="-lbsd" pecl install mongodb \
     && docker-php-ext-enable redis mongodb amqp \
+    && ldd "$(php-config --extension-dir)/mongodb.so" | grep -q libbsd \
     && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
     && rm -rf /var/lib/apt/lists/*
 
