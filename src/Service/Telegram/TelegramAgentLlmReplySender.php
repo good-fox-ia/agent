@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace App\Service\Telegram;
 
+use App\Document\Chat;
+use App\Document\Group;
+use App\Document\User;
 use App\Enum\MessageType;
+use App\Repository\GroupRepository;
 use App\Repository\MessageRepository;
 use App\Service\LLM\DTO\PromptDTO;
+use App\Service\LLM\InlineToolCallParser;
 use App\Service\LLM\LLMInterface;
 use Psr\Log\LoggerInterface;
 
@@ -19,18 +24,34 @@ final class TelegramAgentLlmReplySender
 
     private const LLM_MAX_CONTEXT_MESSAGES = 20;
 
-    private const LLM_SYSTEM_PROMPT = 'Ти корисний асистент. Відповідай українською, стисло та по суті.';
+    private const LLM_SYSTEM_PROMPT = <<<'PROMPT'
+Ти корисний асистент. Відповідай українською, стисло та по суті.
+
+Якщо користувач просить те саме, що роблять команди бота (/start, /help, /newchat, /keyboardon, /keyboardoff), виклич відповідний інструмент telegram_command_* замість імітації команди текстом. Після виконання такого інструменту не дублюй автоматичні повідомлення бота — коротко підтвердь або промовчи, якщо відповідь вже надіслана.
+PROMPT;
 
     public function __construct(
         private readonly TelegramService $telegram,
         private readonly TelegramUserMessageSender $messageSender,
         private readonly LLMInterface $llm,
         private readonly MessageRepository $messages,
+        private readonly GroupRepository $groups,
+        private readonly ActiveChatService $activeChat,
         private readonly TelegramPersistenceService $persistence,
+        private readonly TelegramLlmInvocationContext $invocationContext,
+        private readonly InlineToolCallParser $inlineToolCallParser,
         private readonly LoggerInterface $logger,
     ) {}
 
-    public function sendLlmReplyForChat(int $telegramChatId, bool $isGroup, int $triggerTelegramMessageId): void
+    /**
+     * @param array<string, mixed>|null $telegramMessage
+     */
+    public function sendLlmReplyForChat(
+        int $telegramChatId,
+        bool $isGroup,
+        int $triggerTelegramMessageId,
+        ?array $telegramMessage = null,
+    ): void
     {
         if (!$this->telegram->isConfigured() || !$this->llm->isConfigured()) {
             $this->logger->error('Telegram або LLM не налаштовані, відповідь пропущено для chat {chat}', ['chat' => $telegramChatId]);
@@ -39,12 +60,40 @@ final class TelegramAgentLlmReplySender
         }
 
         $replyToInbound = $this->messages->findOneByTelegramMessageIds($telegramChatId, $triggerTelegramMessageId);
+        $logicalChat = $this->resolveLogicalChatForLlm($telegramChatId, $isGroup, $replyToInbound);
+        if ($logicalChat === null) {
+            $this->logger->warning('Не вдалося визначити активну бесіду для chat {chat}', ['chat' => $telegramChatId]);
 
+            return;
+        }
+
+        if ($replyToInbound !== null && $replyToInbound->getChat() === null) {
+            $this->messages->linkExistingMessageToChat($replyToInbound, $logicalChat);
+        }
+
+        $contextMessage = $telegramMessage ?? $this->buildTelegramMessageFallback(
+            $telegramChatId,
+            $isGroup,
+            $triggerTelegramMessageId,
+            $replyToInbound,
+        );
+
+        $this->invocationContext->begin($contextMessage, $replyToInbound);
         try {
-            $answer = $this->llm->complete($this->buildPromptDtoForChat($telegramChatId));
-            $answer = mb_substr($answer, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
+            $answer = $this->llm->complete($this->buildPromptDtoForChat($logicalChat));
+            if ($this->inlineToolCallParser->looksLikeToolCall($answer)) {
+                $this->logger->warning('LLM повернув сирий виклик тулза замість тексту, пропускаємо відправку chat={chat}', [
+                    'chat' => $telegramChatId,
+                ]);
+
+                return;
+            }
+            $answer = mb_substr(trim($answer), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
+            if ($answer === '') {
+                return;
+            }
             $sent = $this->messageSender->send($telegramChatId, $answer, $isGroup);
-            $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
+            $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound, $logicalChat);
             $this->logger->info('Відповідь агента надіслано в chat {chat}', ['chat' => $telegramChatId]);
         } catch (\Throwable $e) {
             $this->logger->error('Помилка LLM/sendMessage chat={chat}: {error}', [
@@ -57,17 +106,85 @@ final class TelegramAgentLlmReplySender
                     mb_substr('Помилка: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
                     $isGroup,
                 );
-                $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound);
+                $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound, $logicalChat);
             } catch (\Throwable) {
                 // ignore secondary failure
             }
+        } finally {
+            $this->invocationContext->clear();
         }
     }
 
-    private function buildPromptDtoForChat(int $telegramChatId): PromptDTO
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildTelegramMessageFallback(
+        int $telegramChatId,
+        bool $isGroup,
+        int $triggerTelegramMessageId,
+        ?\App\Document\Message $trigger,
+    ): array {
+        $chatType = $isGroup ? 'group' : 'private';
+        $message = [
+            'chat' => ['id' => $telegramChatId, 'type' => $chatType],
+            'message_id' => $triggerTelegramMessageId,
+        ];
+
+        if ($isGroup) {
+            $group = $trigger?->getGroup() ?? $this->groups->findOneBy(['telegramChatId' => $telegramChatId]);
+            if ($group instanceof Group) {
+                $message['chat']['title'] = $group->getTitle();
+                if ($group->getType() !== null) {
+                    $message['chat']['type'] = $group->getType();
+                }
+            }
+        }
+
+        $author = $trigger?->getAuthor();
+        if ($author instanceof User) {
+            $message['from'] = [
+                'id' => $author->getTelegramUserId(),
+                'first_name' => $author->getFirstName(),
+                'last_name' => $author->getLastName(),
+                'username' => $author->getUsername(),
+            ];
+        }
+
+        $text = $trigger?->getText();
+        if ($text !== null && trim($text) !== '') {
+            $message['text'] = $text;
+        }
+
+        return $message;
+    }
+
+    private function resolveLogicalChatForLlm(int $telegramChatId, bool $isGroup, ?\App\Document\Message $trigger): ?Chat
+    {
+        if ($trigger?->getChat() !== null) {
+            return $trigger->getChat();
+        }
+
+        if ($isGroup) {
+            $group = $this->groups->findOneBy(['telegramChatId' => $telegramChatId]);
+            if ($group === null) {
+                return null;
+            }
+
+            return $this->activeChat->ensureForGroup($group);
+        }
+
+        $author = $trigger?->getAuthor();
+        if ($author === null) {
+            return null;
+        }
+
+        return $this->activeChat->ensureForUser($author);
+    }
+
+    private function buildPromptDtoForChat(Chat $chat): PromptDTO
     {
         return new PromptDTO(
-            messages: $this->buildChatMessagesForLlm($telegramChatId),
+            messages: $this->buildChatMessagesForLlm($chat),
             systemPrompt: self::LLM_SYSTEM_PROMPT,
         );
     }
@@ -75,9 +192,9 @@ final class TelegramAgentLlmReplySender
     /**
      * @return list<array{role: string, content: string}>
      */
-    private function buildChatMessagesForLlm(int $telegramChatId): array
+    private function buildChatMessagesForLlm(Chat $chat): array
     {
-        $stored = $this->messages->findByChatOrderedForContext($telegramChatId, self::LLM_MAX_CONTEXT_MESSAGES);
+        $stored = $this->messages->findByLogicalChatOrderedForContext($chat, self::LLM_MAX_CONTEXT_MESSAGES);
 
         $messages = [];
         foreach ($stored as $doc) {
@@ -85,11 +202,15 @@ final class TelegramAgentLlmReplySender
             if ($t === null || trim($t) === '') {
                 continue;
             }
+            $role = match ($doc->getType()) {
+                MessageType::UserPrivate, MessageType::UserGroup => 'user',
+                MessageType::AgentPrivate, MessageType::AgentGroup => 'assistant',
+            };
+            if ($role === 'assistant' && $this->inlineToolCallParser->looksLikeToolCall($t)) {
+                continue;
+            }
             $messages[] = [
-                'role' => match ($doc->getType()) {
-                    MessageType::UserPrivate, MessageType::UserGroup => 'user',
-                    MessageType::AgentPrivate, MessageType::AgentGroup => 'assistant',
-                },
+                'role' => $role,
                 'content' => $t,
             ];
         }

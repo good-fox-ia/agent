@@ -81,9 +81,9 @@ final class ProcessTelegramAudioMessageHandler
             ]);
 
             if ($isGroup) {
-                $this->bus->dispatch(new ProcessTelegramGroupMessage($telegramChatId, $telegramMessageId));
+                $this->bus->dispatch(new ProcessTelegramGroupMessage($telegramChatId, $telegramMessageId, $payload));
             } else {
-                $this->bus->dispatch(new ProcessTelegramPrivateMessage($telegramChatId, $telegramMessageId));
+                $this->bus->dispatch(new ProcessTelegramPrivateMessage($telegramChatId, $telegramMessageId, $payload));
             }
         } catch (\Throwable $e) {
             $this->logger->error('voice/audio chat={chat}: {error}', ['chat' => (string) $chatId, 'error' => $e->getMessage()]);

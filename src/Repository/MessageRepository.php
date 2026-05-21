@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
+use App\Document\Chat;
 use App\Document\Group;
 use App\Document\Message;
 use App\Document\User;
@@ -31,15 +32,39 @@ final class MessageRepository extends ServiceDocumentRepository
     /**
      * @return list<Message>
      */
-    public function findByChatOrderedForContext(int $telegramChatId, int $maxMessages): array
+    public function findByLogicalChatOrderedForContext(Chat $chat, int $maxMessages): array
     {
         /** @var list<Message> $stored */
-        $stored = $this->findBy(['telegramChatId' => $telegramChatId], ['createdAt' => 'ASC']);
+        $stored = $this->findAllByLogicalChatOrdered($chat);
         if (count($stored) > $maxMessages) {
             return array_slice($stored, -$maxMessages);
         }
 
         return $stored;
+    }
+
+    /**
+     * @return list<Message>
+     */
+    public function findAllByLogicalChatOrdered(Chat $chat): array
+    {
+        /** @var list<Message> $stored */
+        $stored = $this->findBy(['chat' => $chat], ['createdAt' => 'ASC']);
+
+        return $stored;
+    }
+
+    public function countByLogicalChat(Chat $chat): int
+    {
+        if ($chat->getId() === null) {
+            return 0;
+        }
+
+        return (int) $this->createQueryBuilder()
+            ->field('chat')->equals($chat->getId())
+            ->count()
+            ->getQuery()
+            ->execute();
     }
 
     public function deleteAllForTelegramChat(int $telegramChatId): void
@@ -59,7 +84,7 @@ final class MessageRepository extends ServiceDocumentRepository
     /**
      * @param array<string, mixed> $telegramMessage об'єкт message з Telegram API
      */
-    public function saveInboundUserFromTelegramPayload(array $telegramMessage): Message
+    public function saveInboundUserFromTelegramPayload(array $telegramMessage, ?Chat $logicalChat = null): Message
     {
         if (!isset($telegramMessage['chat']['id'], $telegramMessage['message_id'])) {
             throw new \InvalidArgumentException('Telegram message: missing chat.id or message_id.');
@@ -96,8 +121,7 @@ final class MessageRepository extends ServiceDocumentRepository
             $entity->setGroup(null);
         }
 
-        $this->getDocumentManager()->persist($entity);
-        $this->getDocumentManager()->flush();
+        $this->linkToLogicalChat($entity, $logicalChat);
 
         return $entity;
     }
@@ -115,8 +139,12 @@ final class MessageRepository extends ServiceDocumentRepository
     /**
      * @param array<string, mixed> $sent об'єкт повідомлення з відповіді sendMessage
      */
-    public function saveAgentOutboundFromTelegramSendResponse(array $sent, bool $isGroup, ?Message $replyToInbound): void
-    {
+    public function saveAgentOutboundFromTelegramSendResponse(
+        array $sent,
+        bool $isGroup,
+        ?Message $replyToInbound,
+        ?Chat $logicalChat = null,
+    ): void {
         if (!isset($sent['chat']['id'], $sent['message_id'])) {
             return;
         }
@@ -142,8 +170,33 @@ final class MessageRepository extends ServiceDocumentRepository
             $entity->setGroup(null);
         }
 
-        $this->getDocumentManager()->persist($entity);
-        $this->getDocumentManager()->flush();
+        $this->linkToLogicalChat($entity, $logicalChat);
+    }
+
+    public function linkExistingMessageToChat(Message $message, Chat $logicalChat): void
+    {
+        $this->linkToLogicalChat($message, $logicalChat);
+    }
+
+    private function linkToLogicalChat(Message $entity, ?Chat $logicalChat): void
+    {
+        $dm = $this->getDocumentManager();
+        $dm->persist($entity);
+
+        if ($logicalChat === null) {
+            $dm->flush();
+
+            return;
+        }
+
+        if ($logicalChat->getId() !== null) {
+            $logicalChat = $dm->getReference(Chat::class, $logicalChat->getId());
+        } else {
+            $dm->persist($logicalChat);
+        }
+
+        $entity->setChat($logicalChat);
+        $dm->flush();
     }
 
     /**

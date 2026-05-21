@@ -31,6 +31,29 @@ class TelegramService
         return $this->sendMessage($chatId, $text, ['reply_markup' => ['remove_keyboard' => true]]);
     }
 
+    public function answerCallbackQuery(string $callbackQueryId, ?string $text = null): void
+    {
+        $body = ['callback_query_id' => $callbackQueryId];
+        if ($text !== null && $text !== '') {
+            $body['text'] = $text;
+        }
+
+        $this->callApi('answerCallbackQuery', $body);
+    }
+
+    public function editMessageText(string|int $chatId, int $messageId, string $text, array $options = []): array
+    {
+        $body = array_merge([
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $text,
+        ], $options);
+
+        $decoded = $this->callApi('editMessageText', $body);
+
+        return $decoded['result'] ?? $decoded;
+    }
+
     public function deleteMessage(string|int $chatId, int $messageId): bool
     {
         try {
@@ -59,7 +82,12 @@ class TelegramService
 
     public function getUpdates(int $offset = 0, int $timeout = 30, int $limit = 100): array
     {
-        $decoded = $this->callApi('getUpdates', ['offset' => $offset, 'timeout' => $timeout, 'limit' => $limit]);
+        $decoded = $this->callApi('getUpdates', [
+            'offset' => $offset,
+            'timeout' => $timeout,
+            'limit' => $limit,
+            'allowed_updates' => ['message', 'edited_message', 'callback_query'],
+        ]);
 
         return $decoded['result'] ?? [];
     }

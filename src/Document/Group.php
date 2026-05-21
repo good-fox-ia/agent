@@ -12,6 +12,7 @@ use Doctrine\ODM\MongoDB\Mapping\Attribute\Field;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Id;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Index;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\ReferenceMany;
+use Doctrine\ODM\MongoDB\Mapping\Attribute\ReferenceOne;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 
 #[Document(
@@ -41,6 +42,9 @@ final class Group
     /** @var Collection<int, User> */
     #[ReferenceMany(targetDocument: User::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
     private Collection $users;
+
+    #[ReferenceOne(targetDocument: Chat::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
+    private ?Chat $currentChat = null;
 
     #[Field(type: 'date_immutable')]
     private \DateTimeImmutable $createdAt;
@@ -118,6 +122,18 @@ final class Group
         }
 
         return $this;
+    }
+
+    public function getCurrentChat(): ?Chat
+    {
+        return $this->currentChat;
+    }
+
+    public function setCurrentChat(?Chat $currentChat): self
+    {
+        $this->currentChat = $currentChat;
+
+        return $this->touchUpdatedAt();
     }
 
     public function getCreatedAt(): \DateTimeImmutable

@@ -41,4 +41,45 @@ final class TelegramMessageHelper
 
         return TelegramBotCommand::tryFrom(strtolower($matches[1]));
     }
+
+    /**
+     * @param array<string, mixed> $telegramMessage
+     *
+     * @return array<string, mixed>
+     */
+    public static function withCommandText(array $telegramMessage, TelegramBotCommand $command): array
+    {
+        $message = $telegramMessage;
+        $message['text'] = $command->asSlash();
+
+        return $message;
+    }
+
+    public static function commandArguments(array $telegramMessage): string
+    {
+        $text = self::visibleTextBody($telegramMessage);
+        if ($text === '' || !str_starts_with($text, '/')) {
+            return '';
+        }
+
+        if (!preg_match('#^/\S+\s+(.*)$#s', $text, $matches)) {
+            return '';
+        }
+
+        return trim($matches[1]);
+    }
+
+    public static function withCommandTextAndArgs(
+        array $telegramMessage,
+        TelegramBotCommand $command,
+        string $arguments,
+    ): array {
+        $message = self::withCommandText($telegramMessage, $command);
+        $args = trim($arguments);
+        if ($args !== '') {
+            $message['text'] = $command->asSlash() . ' ' . $args;
+        }
+
+        return $message;
+    }
 }

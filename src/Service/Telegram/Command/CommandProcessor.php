@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Telegram\Command;
 
 use App\Document\Message;
+use App\Enum\TelegramBotCommand;
 use App\Service\Telegram\TelegramMessageHelper;
 use Psr\Log\LoggerInterface;
 
@@ -26,6 +27,11 @@ final class CommandProcessor
             return false;
         }
 
+        return $this->process($command, $telegramMessage, $inbound);
+    }
+
+    public function process(TelegramBotCommand $command, array $telegramMessage, ?Message $inbound): bool
+    {
         foreach ($this->processes as $process) {
             if (!$process->handles($command)) {
                 continue;

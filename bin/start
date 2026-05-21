@@ -10,7 +10,7 @@ init_compose_dev
 echo "→ Збірка і старт контейнерів (dev)..."
 "${COMPOSE[@]}" up -d --build
 
-wait_for_php_service COMPOSE
+wait_for_php_service
 
 echo "→ Composer install..."
 "${COMPOSE[@]}" exec -T php composer install --no-interaction

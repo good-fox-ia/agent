@@ -25,6 +25,7 @@ class Groq extends AbstractLLM
         Client $httpClient,
         PromptAdapterInterface $promptAdapter,
         private readonly ToolRegistry $toolRegistry,
+        private readonly InlineToolCallParser $inlineToolCallParser,
         private readonly string $defaultChatModel = self::DEFAULT_CHAT_MODEL,
     ) {
         parent::__construct($apiKey, $httpClient, $promptAdapter);
@@ -96,14 +97,35 @@ class Groq extends AbstractLLM
 
     private function sendPrompt(array $body): string
     {
+        $messages = $body['messages'] ?? [];
+        if (!is_array($messages)) {
+            $messages = [];
+        }
+
         for ($iteration = 0; $iteration < self::MAX_TOOL_ITERATIONS; ++$iteration) {
             $decoded = $this->post(self::COMPLETE_URL, $body, self::getHeaders());
             $message = $this->extractAssistantMessage($decoded);
 
             $toolCalls = $message['tool_calls'] ?? null;
+            $content = isset($message['content']) && is_string($message['content']) ? $message['content'] : '';
+
             if (!is_array($toolCalls) || $toolCalls === []) {
-                $content = $message['content'] ?? null;
-                if (!is_string($content) || $content === '') throw new \RuntimeException('Groq response has no message content.');
+                $inline = $this->inlineToolCallParser->parse($content);
+                if ($inline !== null) {
+                    $toolCalls = [$this->inlineToolCallParser->toApiToolCall($inline)];
+                    $message['tool_calls'] = $toolCalls;
+                    $message['content'] = null;
+                }
+            }
+
+            if (!is_array($toolCalls) || $toolCalls === []) {
+                if ($content === '') {
+                    if ($iteration > 0) {
+                        return '';
+                    }
+
+                    throw new \RuntimeException('Groq response has no message content.');
+                }
 
                 return $content;
             }

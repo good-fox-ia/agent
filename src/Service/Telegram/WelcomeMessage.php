@@ -81,6 +81,8 @@ final class WelcomeMessage
 🎤 Або <b>надішли голосове</b> — розпізнаю мову і так відповім.
 
 💡 Команда <code>/help</code> — короткі підказки.
+🆕 <code>/newchat</code> — нова бесіда (очистити історію в Telegram).
+📋 <code>/listchats</code> — список ваших бесід (обрати кнопкою).
 ⌨️ <code>/keyboardon</code> та <code>/keyboardoff</code> — увімкнути або вимкнути кнопки внизу екрана.
 TEXT;
     }

@@ -17,7 +17,7 @@ fi
 echo "→ Збірка і старт (production)..."
 "${COMPOSE[@]}" up -d --build
 
-wait_for_php_service COMPOSE
+wait_for_php_service
 
 echo "→ Composer install (prod)..."
 "${COMPOSE[@]}" exec -T php composer install --no-dev --no-interaction --optimize-autoloader

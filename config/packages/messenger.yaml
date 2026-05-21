@@ -50,7 +50,10 @@ framework:
 
         routing:
             App\Message\Telegram\ProcessTelegramMessage: telegram_inbound
+            # Callback обробляємо синхронно в telegram-poll, щоб не чекати в черзі воркера
+            App\Message\Telegram\ProcessTelegramCallbackQuery: sync
             App\Message\Telegram\Content\ProcessTelegramTextMessage: telegram_messages
+            App\Message\Telegram\Chat\FinalizeChatSwitch: telegram_messages
             App\Message\Telegram\Content\ProcessTelegramAudioMessage: telegram_audio
             App\Message\Telegram\Chat\ProcessTelegramPrivateMessage: telegram_message_private
             App\Message\Telegram\Chat\ProcessTelegramGroupMessage: telegram_message_group

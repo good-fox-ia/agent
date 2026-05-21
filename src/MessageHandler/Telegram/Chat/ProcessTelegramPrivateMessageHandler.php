@@ -17,6 +17,11 @@ final class ProcessTelegramPrivateMessageHandler
 
     public function __invoke(ProcessTelegramPrivateMessage $job): void
     {
-        $this->agentLlmReplySender->sendLlmReplyForChat($job->telegramChatId, false, $job->triggerTelegramMessageId);
+        $this->agentLlmReplySender->sendLlmReplyForChat(
+            $job->telegramChatId,
+            false,
+            $job->triggerTelegramMessageId,
+            $job->telegramMessage,
+        );
     }
 }

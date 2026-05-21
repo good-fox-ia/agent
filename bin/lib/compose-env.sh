@@ -6,26 +6,24 @@ cd_to_project_root() {
 }
 
 append_compose_env_files() {
-  local -n target=$1
-  [[ -f .env ]] && target+=(--env-file .env)
-  [[ -f .env.local ]] && target+=(--env-file .env.local)
+  [[ -f .env ]] && COMPOSE+=(--env-file .env)
+  [[ -f .env.local ]] && COMPOSE+=(--env-file .env.local)
 }
 
 init_compose_dev() {
   COMPOSE=(docker compose)
-  append_compose_env_files COMPOSE
+  append_compose_env_files
 }
 
 init_compose_prod() {
   COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
-  append_compose_env_files COMPOSE
+  append_compose_env_files
 }
 
 wait_for_php_service() {
-  local -n compose=$1
   echo "→ Очікування сервісу php..."
   for _ in $(seq 1 60); do
-    if "${compose[@]}" exec -T php true 2>/dev/null; then
+    if "${COMPOSE[@]}" exec -T php true 2>/dev/null; then
       return 0
     fi
     sleep 1

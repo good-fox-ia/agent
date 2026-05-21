@@ -15,6 +15,10 @@ final class UserReplyMarkupResolver
      */
     public function applyForUser(User $user, array $options = []): array
     {
+        if (isset($options['reply_markup']['inline_keyboard'])) {
+            return $options;
+        }
+
         $options['reply_markup'] = $user->isActiveKeyboard()
             ? ReplyKeyboard::markup()
             : ['remove_keyboard' => true];

@@ -7,9 +7,11 @@ namespace App\Service\Telegram\Command;
 use App\Document\Message;
 use App\Enum\TelegramBotCommand;
 use App\Repository\ChatRepository;
-use App\Repository\MessageRepository;
+use App\Repository\GroupRepository;
 use App\Repository\UserRepository;
+use App\Service\Telegram\TelegramMessageHelper;
 use App\Service\Telegram\TelegramPersistenceService;
+use App\Service\Telegram\TelegramService;
 use App\Service\Telegram\TelegramUserMessageSender;
 use Psr\Log\LoggerInterface;
 
@@ -19,8 +21,8 @@ final class NewChatCommandProcess implements CommandProcessInterface
 
     public function __construct(
         private readonly UserRepository $users,
+        private readonly GroupRepository $groups,
         private readonly ChatRepository $chats,
-        private readonly MessageRepository $messages,
         private readonly TelegramService $telegram,
         private readonly TelegramUserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
@@ -50,17 +52,23 @@ final class NewChatCommandProcess implements CommandProcessInterface
 
         try {
             $user = $this->users->upsertFromTelegramFromPayload($from);
-            $this->chats->createForUser($user);
+            $isGroup = TelegramMessageHelper::isGroup($telegramMessage);
+            $logicalChat = $isGroup
+                ? $this->chats->createForGroup(
+                    $this->groups->upsertFromTelegramChatPayload($telegramMessage['chat'])->addUser($user),
+                )
+                : $this->chats->createForUser($user);
 
             if ($messageId > 0) {
                 $this->telegram->deleteMessage($chatId, $messageId);
             }
 
-            //$this->messages->deleteAllForTelegramChat($chatId);
             $this->telegram->clearChat($chatId, $messageId);
 
-            $sent = $this->messageSender->sendToUser($user, self::CONFIRMATION_TEXT);
-            $this->persistence->recordAgentOutboundFromTelegramSend($sent, false, null);
+            $sent = $isGroup
+                ? $this->messageSender->send($chatId, self::CONFIRMATION_TEXT, true)
+                : $this->messageSender->sendToUser($user, self::CONFIRMATION_TEXT);
+            $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $inbound, $logicalChat);
         } catch (\Throwable $e) {
             $this->logger->error('Помилка створення нового чату chat={chat}: {error}', [
                 'chat' => $chatId,

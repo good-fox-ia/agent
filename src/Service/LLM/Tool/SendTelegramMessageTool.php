@@ -6,6 +6,7 @@ namespace App\Service\LLM\Tool;
 
 use App\Enum\ToolName;
 use App\Repository\UserRepository;
+use App\Service\Telegram\ActiveChatService;
 use App\Service\Telegram\TelegramPersistenceService;
 use App\Service\Telegram\TelegramService;
 use App\Service\Telegram\TelegramUserMessageSender;
@@ -16,6 +17,7 @@ final class SendTelegramMessageTool implements ToolInterface
 
     public function __construct(
         private readonly UserRepository $users,
+        private readonly ActiveChatService $activeChat,
         private readonly TelegramService $telegram,
         private readonly TelegramUserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
@@ -80,7 +82,12 @@ final class SendTelegramMessageTool implements ToolInterface
 
         try {
             $sent = $this->messageSender->sendToUser($user, $text);
-            $this->persistence->recordAgentOutboundFromTelegramSend($sent, false, null);
+            $this->persistence->recordAgentOutboundFromTelegramSend(
+                $sent,
+                false,
+                null,
+                $this->activeChat->ensureForUser($user),
+            );
         } catch (\Throwable $e) {
             return json_encode([
                 'ok' => false,

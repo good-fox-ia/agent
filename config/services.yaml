@@ -19,6 +19,8 @@ services:
     # this creates a service per class whose id is the fully-qualified class name
     App\:
         resource: '../src/'
+        exclude:
+            - '../src/Service/LLM/Tool/TelegramBotCommandTool.php'
 
     App\Service\LLM\LLMInterface: '@App\Service\LLM\Groq'
 
@@ -38,6 +40,66 @@ services:
     App\Service\Telegram\Command\CommandProcessor:
         arguments:
             $processes: !tagged_iterator app.telegram.command_process
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.start:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::START
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_START
+            $description: 'Run the /start bot command: send the welcome message with bot capabilities. Use when the user greets the bot, asks what you can do, or wants to start over — same as typing /start in Telegram.'
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.help:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::HELP
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_HELP
+            $description: 'Run the /help bot command: send help and usage hints. Use when the user asks for help, commands list, or how to use the bot — same as typing /help.'
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.new_chat:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::NEW_CHAT
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_NEW_CHAT
+            $description: 'Run the /newchat bot command: start a fresh conversation (clears visible chat history in Telegram and creates a new logical chat). Use when the user wants a new chat, clean slate, or to reset the conversation — same as typing /newchat.'
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.keyboard_on:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::KEYBOARD_ON
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_KEYBOARD_ON
+            $description: 'Run the /keyboardon bot command: enable the reply keyboard buttons at the bottom of the chat. Use when the user wants buttons or keyboard turned on — same as typing /keyboardon.'
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.keyboard_off:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::KEYBOARD_OFF
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_KEYBOARD_OFF
+            $description: 'Run the /keyboardoff bot command: disable the reply keyboard buttons. Use when the user wants to hide buttons or turn keyboard off — same as typing /keyboardoff.'
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.list_chats:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::LIST_CHATS
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_LIST_CHATS
+            $description: 'Run the /listchats bot command: show the user their saved conversations as inline buttons to switch chat. Use when the user wants to see or switch conversations — same as typing /listchats.'
 
     App\Service\LLM\Groq:
         arguments:

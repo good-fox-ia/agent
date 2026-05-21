@@ -27,9 +27,9 @@ final class ProcessTelegramTextMessageHandler
         if ($chatId === null || $messageId === null) return;
 
         if (TelegramMessageHelper::isGroup($payload)) {
-            $this->bus->dispatch(new ProcessTelegramGroupMessage($chatId, $messageId));
+            $this->bus->dispatch(new ProcessTelegramGroupMessage($chatId, $messageId, $payload));
         } else {
-            $this->bus->dispatch(new ProcessTelegramPrivateMessage($chatId, $messageId));
+            $this->bus->dispatch(new ProcessTelegramPrivateMessage($chatId, $messageId, $payload));
         }
     }
 }
