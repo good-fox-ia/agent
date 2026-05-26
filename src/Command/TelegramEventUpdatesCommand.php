@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Message\Telegram\ProcessTelegramCallback;
 use App\Message\Telegram\ProcessTelegramMessage;
-use App\Service\Telegram\TelegramCallbackDispatcher;
+use App\Service\Telegram\Callback\Dispatcher;
 use App\Service\Telegram\TelegramService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -24,7 +25,7 @@ final class TelegramEventUpdatesCommand extends Command
     public function __construct(
         private readonly TelegramService $telegram,
         private readonly MessageBusInterface $bus,
-        private readonly TelegramCallbackDispatcher $callbackDispatcher,
+        private readonly Dispatcher $callbackDispatcher,
     ) {
         parent::__construct();
     }
@@ -47,6 +48,8 @@ final class TelegramEventUpdatesCommand extends Command
 
         $io->note('Long polling. Зупинка: Ctrl+C');
 
+
+
         $offset = 0;
         while (true) {
             try {
@@ -59,33 +62,18 @@ final class TelegramEventUpdatesCommand extends Command
             }
 
             foreach ($updates as $update) {
-                if (!is_array($update)) {
-                    continue;
-                }
+                if (!is_array($update)) continue;
 
                 $updateId = (int) ($update['update_id'] ?? 0);
                 $offset = max($offset, $updateId + 1);
 
-                $callbackQuery = $update['callback_query'] ?? null;
-                if (is_array($callbackQuery)) {
-                    $data = (string) ($callbackQuery['data'] ?? '');
-                    try {
-                        $this->callbackDispatcher->dispatch($callbackQuery);
-                        $io->writeln(sprintf('[%s] callback OK data=%s', date('c'), $data));
-                    } catch (\Throwable $e) {
-                        $io->error(sprintf('[%s] callback FAIL data=%s: %s', date('c'), $data, $e->getMessage()));
-                    }
-
-                    continue;
-                }
+                $callback = $update['callback_query'] ?? null;
+                if (is_array($callback))
+                    $this->bus->dispatch(new ProcessTelegramCallback($callback));
 
                 $message = $update['message'] ?? $update['edited_message'] ?? null;
-                if (!is_array($message) || !isset($message['chat']['id'])) {
-                    continue;
-                }
-
-                $this->bus->dispatch(new ProcessTelegramMessage($message));
-                $io->writeln(sprintf('[%s] queued inbound chat=%s', date('c'), (string) $message['chat']['id']));
+                if (is_array($message) && isset($message['chat']['id']))
+                    $this->bus->dispatch(new ProcessTelegramMessage($message));
             }
         }
     }

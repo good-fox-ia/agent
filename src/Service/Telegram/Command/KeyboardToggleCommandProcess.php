@@ -9,7 +9,7 @@ use App\Enum\TelegramBotCommand;
 use App\Repository\UserRepository;
 use App\Service\Telegram\TelegramMessageHelper;
 use App\Service\Telegram\TelegramPersistenceService;
-use App\Service\Telegram\TelegramUserMessageSender;
+use App\Service\Telegram\UserMessageSender;
 use Psr\Log\LoggerInterface;
 
 final class KeyboardToggleCommandProcess implements CommandProcessInterface
@@ -20,7 +20,7 @@ final class KeyboardToggleCommandProcess implements CommandProcessInterface
 
     public function __construct(
         private readonly UserRepository $users,
-        private readonly TelegramUserMessageSender $messageSender,
+        private readonly UserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
         private readonly LoggerInterface $logger,
     ) {}

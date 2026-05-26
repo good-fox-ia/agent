@@ -12,7 +12,7 @@ use App\Service\LLM\LLMInterface;
 use App\Service\Telegram\TelegramMessageHelper;
 use App\Service\Telegram\TelegramPersistenceService;
 use App\Service\Telegram\TelegramService;
-use App\Service\Telegram\TelegramUserMessageSender;
+use App\Service\Telegram\UserMessageSender;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -24,7 +24,7 @@ final class ProcessTelegramAudioMessageHandler
 
     public function __construct(
         private readonly TelegramService $telegram,
-        private readonly TelegramUserMessageSender $messageSender,
+        private readonly UserMessageSender $messageSender,
         private readonly LLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly TelegramPersistenceService $persistence,

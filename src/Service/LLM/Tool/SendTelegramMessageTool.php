@@ -9,7 +9,7 @@ use App\Repository\UserRepository;
 use App\Service\Telegram\ActiveChatService;
 use App\Service\Telegram\TelegramPersistenceService;
 use App\Service\Telegram\TelegramService;
-use App\Service\Telegram\TelegramUserMessageSender;
+use App\Service\Telegram\UserMessageSender;
 
 final class SendTelegramMessageTool implements ToolInterface
 {
@@ -19,7 +19,7 @@ final class SendTelegramMessageTool implements ToolInterface
         private readonly UserRepository $users,
         private readonly ActiveChatService $activeChat,
         private readonly TelegramService $telegram,
-        private readonly TelegramUserMessageSender $messageSender,
+        private readonly UserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
     ) {}
 

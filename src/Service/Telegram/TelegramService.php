@@ -34,9 +34,7 @@ class TelegramService
     public function answerCallbackQuery(string $callbackQueryId, ?string $text = null): void
     {
         $body = ['callback_query_id' => $callbackQueryId];
-        if ($text !== null && $text !== '') {
-            $body['text'] = $text;
-        }
+        if (isset($text)) $body['text'] = $text;
 
         $this->callApi('answerCallbackQuery', $body);
     }

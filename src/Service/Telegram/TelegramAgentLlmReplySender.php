@@ -32,7 +32,7 @@ PROMPT;
 
     public function __construct(
         private readonly TelegramService $telegram,
-        private readonly TelegramUserMessageSender $messageSender,
+        private readonly UserMessageSender $messageSender,
         private readonly LLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly GroupRepository $groups,

@@ -11,7 +11,7 @@ use App\Service\Telegram\Keyboard\UserReplyMarkupResolver;
 /**
  * Надсилання повідомлень у приватний чат з урахуванням налаштування reply-клавіатури користувача.
  */
-final class TelegramUserMessageSender
+final class UserMessageSender
 {
     public function __construct(
         private readonly TelegramService $telegram,
@@ -19,6 +19,9 @@ final class TelegramUserMessageSender
         private readonly UserReplyMarkupResolver $replyMarkup,
     ) {}
 
+
+
+    
     /**
      * @param array<string, mixed> $options
      *

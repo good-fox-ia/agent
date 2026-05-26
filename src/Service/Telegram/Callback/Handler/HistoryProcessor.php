@@ -2,53 +2,43 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram\Command;
+namespace App\Service\Telegram\Callback\Handler;
 
 use App\Repository\ChatRepository;
 use App\Repository\UserRepository;
+use App\Service\Telegram\Callback\CallbackDTO;
 use App\Service\Telegram\Chat\ChatHistoryFormatter;
 use App\Service\Telegram\Chat\ChatSummaryPresenter;
-use App\Service\Telegram\TelegramMessageHelper;
 use App\Service\Telegram\TelegramPersistenceService;
 use App\Service\Telegram\TelegramService;
-use App\Service\Telegram\TelegramUserMessageSender;
+use App\Service\Telegram\UserMessageSender;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Psr\Log\LoggerInterface;
 
 /**
  * Обробляє кнопку «Показати все листування» (callback_data: sh:{chatId}).
  */
-final class ShowChatHistoryCallbackProcessor
+final class HistoryProcessor
 {
     public function __construct(
         private readonly UserRepository $users,
         private readonly ChatRepository $chats,
         private readonly ChatHistoryFormatter $historyFormatter,
         private readonly TelegramService $telegram,
-        private readonly TelegramUserMessageSender $messageSender,
+        private readonly UserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
         private readonly DocumentManager $documentManager,
         private readonly LoggerInterface $logger,
     ) {}
 
-    public function handles(array $callbackQuery): bool
+    public function handles(string $data): bool
     {
-        $data = (string) ($callbackQuery['data'] ?? '');
-
         return str_starts_with($data, ChatSummaryPresenter::HISTORY_CALLBACK_PREFIX);
     }
 
-    public function process(array $callbackQuery): void
+    public function process(CallbackDTO $callback): void
     {
-        if (!$this->handles($callbackQuery)) {
-            return;
-        }
-
-        $callbackId = (string) ($callbackQuery['id'] ?? '');
-        $from = $callbackQuery['from'] ?? null;
-        $message = $callbackQuery['message'] ?? null;
-
-        if (!is_array($from) || !isset($from['id']) || !is_array($message)) {
+        if (!$this->handles($callback)) {
             return;
         }
 
@@ -58,48 +48,43 @@ final class ShowChatHistoryCallbackProcessor
             return;
         }
 
-        $logicalChatId = substr((string) $callbackQuery['data'], strlen(ChatSummaryPresenter::HISTORY_CALLBACK_PREFIX));
+        $logicalChatId = substr($callback->data, strlen(ChatSummaryPresenter::HISTORY_CALLBACK_PREFIX));
         if ($logicalChatId === '') {
             return;
         }
 
-        $telegramChatId = (int) ($message['chat']['id'] ?? 0);
-        if ($telegramChatId === 0) {
-            return;
-        }
-
         try {
-            $user = $this->users->upsertFromTelegramFromPayload($from);
+            $user = $this->users->upsertFromTelegramFromPayload(['id' => $callback->fromId]);
             $this->documentManager->flush();
 
             $logicalChat = $this->chats->findOneByIdForUser($logicalChatId, $user);
             if ($logicalChat === null) {
-                if ($callbackId !== '') {
-                    $this->telegram->answerCallbackQuery($callbackId, 'Бесіду не знайдено');
+                if ($callback->callbackId !== '') {
+                    $this->telegram->answerCallbackQuery($callback->callbackId, 'Бесіду не знайдено');
                 }
 
                 return;
             }
 
-            if ($callbackId !== '') {
-                $this->telegram->answerCallbackQuery($callbackId);
+            if ($callback->callbackId !== '') {
+                $this->telegram->answerCallbackQuery($callback->callbackId);
             }
 
-            $isGroup = TelegramMessageHelper::isGroup($message);
+            $isGroup = $callback->chatId < 0;
             $chunks = $this->historyFormatter->formatChunks($logicalChat);
 
             foreach ($chunks as $chunk) {
                 $sent = $isGroup
-                    ? $this->messageSender->send($telegramChatId, $chunk, true)
+                    ? $this->messageSender->send($callback->chatId, $chunk, true)
                     : $this->messageSender->sendToUser($user, $chunk);
 
                 $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, null, $logicalChat);
             }
         } catch (\Throwable $e) {
             $this->logger->error('Помилка callback історії бесіди: {error}', ['error' => $e->getMessage()]);
-            if ($callbackId !== '') {
+            if ($callback->callbackId !== '') {
                 try {
-                    $this->telegram->answerCallbackQuery($callbackId, 'Помилка надсилання');
+                    $this->telegram->answerCallbackQuery($callback->callbackId, 'Помилка надсилання');
                 } catch (\Throwable) {
                     // ignore
                 }

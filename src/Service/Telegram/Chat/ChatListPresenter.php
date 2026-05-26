@@ -9,7 +9,7 @@ use App\Document\Message;
 use App\Document\User;
 use App\Service\Telegram\TelegramPersistenceService;
 use App\Service\Telegram\TelegramService;
-use App\Service\Telegram\TelegramUserMessageSender;
+use App\Service\Telegram\UserMessageSender;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -23,7 +23,7 @@ final class ChatListPresenter
 
     public function __construct(
         private readonly TelegramService $telegram,
-        private readonly TelegramUserMessageSender $messageSender,
+        private readonly UserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
         private readonly LoggerInterface $logger,
     ) {}
