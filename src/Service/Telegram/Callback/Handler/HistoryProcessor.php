@@ -38,9 +38,7 @@ final class HistoryProcessor
 
     public function process(CallbackDTO $callback): void
     {
-        if (!$this->handles($callback)) {
-            return;
-        }
+        if (!$this->handles($callback->data)) return;
 
         if (!$this->telegram->isConfigured()) {
             $this->logger->error('Telegram не налаштований, callback історії пропущено');
@@ -49,9 +47,7 @@ final class HistoryProcessor
         }
 
         $logicalChatId = substr($callback->data, strlen(ChatSummaryResponder::HISTORY_CALLBACK_PREFIX));
-        if ($logicalChatId === '') {
-            return;
-        }
+        if ($logicalChatId === '') return;
 
         try {
             $user = $this->users->upsertFromTelegramFromPayload(['id' => $callback->fromId]);

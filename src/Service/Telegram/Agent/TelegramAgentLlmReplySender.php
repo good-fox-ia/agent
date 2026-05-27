@@ -14,6 +14,7 @@ use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\InlineToolCallParser;
 use App\Service\LLM\LLMInterface;
 use App\Service\Telegram\Api\TelegramService;
+use App\Service\Telegram\Chat\Content\ChatTitleGenerator;
 use App\Service\Telegram\Context\TelegramLlmInvocationContext;
 use App\Service\Telegram\Persistence\ActiveChatService;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
@@ -32,7 +33,7 @@ final class TelegramAgentLlmReplySender
     private const LLM_SYSTEM_PROMPT = <<<'PROMPT'
 Ти корисний асистент. Відповідай українською, стисло та по суті.
 
-Якщо користувач просить те саме, що роблять команди бота (/start, /help, /newchat, /keyboardon, /keyboardoff), виклич відповідний інструмент telegram_command_* замість імітації команди текстом. Після виконання такого інструменту не дублюй автоматичні повідомлення бота — коротко підтвердь або промовчи, якщо відповідь вже надіслана.
+Якщо користувач просить те саме, що роблять команди бота (/start, /help, /newchat, /keyboardon, /keyboardoff, /listchats, /edit_system_promt), виклич відповідний інструмент telegram_command_* замість імітації команди текстом. Після виконання такого інструменту не дублюй автоматичні повідомлення бота — коротко підтвердь або промовчи, якщо відповідь вже надіслана.
 PROMPT;
 
     public function __construct(
@@ -45,6 +46,7 @@ PROMPT;
         private readonly TelegramPersistenceService $persistence,
         private readonly TelegramLlmInvocationContext $invocationContext,
         private readonly InlineToolCallParser $inlineToolCallParser,
+        private readonly ChatTitleGenerator $chatTitleGenerator,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -99,6 +101,9 @@ PROMPT;
             }
             $sent = $this->messageSender->send($telegramChatId, $answer, $isGroup);
             $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound, $logicalChat);
+            if (!$isGroup) {
+                $this->chatTitleGenerator->updateTitleIfNeeded($logicalChat);
+            }
             $this->logger->info('Відповідь агента надіслано в chat {chat}', ['chat' => $telegramChatId]);
         } catch (\Throwable $e) {
             $this->logger->error('Помилка LLM/sendMessage chat={chat}: {error}', [
@@ -190,8 +195,18 @@ PROMPT;
     {
         return new PromptDTO(
             messages: $this->buildChatMessagesForLlm($chat),
-            systemPrompt: self::LLM_SYSTEM_PROMPT,
+            systemPrompt: $this->buildSystemPromptForChat($chat),
         );
+    }
+
+    private function buildSystemPromptForChat(Chat $chat): string
+    {
+        $custom = $chat->getSystemPrompt();
+        if ($custom === null || trim($custom) === '') {
+            return self::LLM_SYSTEM_PROMPT;
+        }
+
+        return self::LLM_SYSTEM_PROMPT."\n\nДодаткові інструкції для цієї бесіди:\n".trim($custom);
     }
 
     /**

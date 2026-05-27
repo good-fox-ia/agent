@@ -101,6 +101,16 @@ services:
             $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_LIST_CHATS
             $description: 'Run the /listchats bot command: show the user their saved conversations as inline buttons to switch chat. Use when the user wants to see or switch conversations — same as typing /listchats.'
 
+    App\Service\LLM\Tool\TelegramBotCommandTool.edit_system_prompt:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::EDIT_SYSTEM_PROMPT
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_EDIT_SYSTEM_PROMPT
+            $description: 'Run the /edit_system_promt bot command: view or change the LLM system prompt for the active conversation. Use when the user wants custom instructions for this chat. Args: new prompt text, or "reset" to clear. Same as typing /edit_system_promt in Telegram.'
+
     App\Service\LLM\Groq:
         arguments:
             $apiKey: '%env(GROQ_API_KEY)%'

@@ -87,6 +87,7 @@ final class WelcomeMessage
 🆕 <code>/newchat</code> — нова бесіда (очистити історію в Telegram).
 📋 <code>/listchats</code> — список ваших бесід (обрати кнопкою).
 ⌨️ <code>/keyboardon</code> та <code>/keyboardoff</code> — увімкнути або вимкнути кнопки внизу екрана.
+⚙️ <code>/edit_system_promt</code> — змінити system prompt для активної бесіди (<code>reset</code> — скинути).
 TEXT;
     }
 }

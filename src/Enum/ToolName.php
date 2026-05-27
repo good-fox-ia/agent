@@ -15,4 +15,5 @@ enum ToolName: string
     case TELEGRAM_COMMAND_KEYBOARD_ON = 'telegram_command_keyboard_on';
     case TELEGRAM_COMMAND_KEYBOARD_OFF = 'telegram_command_keyboard_off';
     case TELEGRAM_COMMAND_LIST_CHATS = 'telegram_command_list_chats';
+    case TELEGRAM_COMMAND_EDIT_SYSTEM_PROMPT = 'telegram_command_edit_system_prompt';
 }
