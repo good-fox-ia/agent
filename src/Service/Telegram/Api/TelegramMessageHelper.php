@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram;
+namespace App\Service\Telegram\Api;
 
 use App\Enum\TelegramBotCommand;
 
@@ -62,7 +62,7 @@ final class TelegramMessageHelper
             return '';
         }
 
-        if (!preg_match('#^/\S+\s+(.*)$#s', $text, $matches)) {
+        if (!preg_match('#^/\\S+\\s+(.*)$#s', $text, $matches)) {
             return '';
         }
 
@@ -83,3 +83,4 @@ final class TelegramMessageHelper
         return $message;
     }
 }
+

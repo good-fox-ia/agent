@@ -2,29 +2,27 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram\Chat;
+namespace App\Service\Telegram\Chat\Action;
 
 use App\Document\Chat;
 use App\Document\Message;
 use App\Document\User;
-use App\Message\Telegram\Chat\FinalizeChatSwitch;
-use App\Service\Telegram\TelegramService;
+use App\Service\Telegram\Chat\Content\ChatConversationSummarizer;
+use App\Service\Telegram\Chat\UI\ChatSummaryResponder;
+use App\Service\Telegram\Api\TelegramService;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * Перемикає активну бесіду; LLM-опис генерується асинхронно без видалення повідомлень у Telegram.
+ * Перемикає активну бесіду та одразу формує LLM-опис (без брокера повідомлень).
  */
-final class UserChatSwitcher
+final class SwitchChatAction
 {
-    private const PLACEHOLDER_TEXT = "⏳ Готую опис бесіди…";
-
     public function __construct(
         private readonly DocumentManager $documentManager,
         private readonly TelegramService $telegram,
-        private readonly ChatSummaryPresenter $summaryPresenter,
-        private readonly MessageBusInterface $bus,
+        private readonly ChatConversationSummarizer $summarizer,
+        private readonly ChatSummaryResponder $summaryPresenter,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -47,22 +45,8 @@ final class UserChatSwitcher
             $user->setCurrentChat($chat);
             $this->documentManager->flush();
 
-            $placeholderMessageId = $this->summaryPresenter->send(
-                $user,
-                $chat,
-                self::PLACEHOLDER_TEXT,
-                $telegramChatId,
-                $inbound,
-                $isGroup,
-            );
-
-            $this->bus->dispatch(new FinalizeChatSwitch(
-                logicalChatId: (string) $chat->getId(),
-                telegramUserId: $user->getTelegramUserId(),
-                telegramChatId: $telegramChatId,
-                placeholderTelegramMessageId: $placeholderMessageId,
-                isGroup: $isGroup,
-            ));
+            $summary = $this->summarizer->summarize($chat);
+            $this->summaryPresenter->send($user, $chat, $summary, $telegramChatId, $inbound, $isGroup);
         } catch (\Throwable $e) {
             $this->logger->error('Помилка перемикання бесіди chat={chat}: {error}', [
                 'chat' => $telegramChatId,
@@ -73,3 +57,4 @@ final class UserChatSwitcher
         }
     }
 }
+

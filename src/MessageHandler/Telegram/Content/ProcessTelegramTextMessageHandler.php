@@ -7,7 +7,7 @@ namespace App\MessageHandler\Telegram\Content;
 use App\Message\Telegram\Chat\ProcessTelegramGroupMessage;
 use App\Message\Telegram\Chat\ProcessTelegramPrivateMessage;
 use App\Message\Telegram\Content\ProcessTelegramTextMessage;
-use App\Service\Telegram\TelegramMessageHelper;
+use App\Service\Telegram\Api\TelegramMessageHelper;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
 

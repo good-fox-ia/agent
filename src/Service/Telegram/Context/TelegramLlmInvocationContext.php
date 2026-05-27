@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram;
+namespace App\Service\Telegram\Context;
 
 use App\Document\Message;
 
@@ -53,3 +53,4 @@ final class TelegramLlmInvocationContext
         return $this->inbound;
     }
 }
+

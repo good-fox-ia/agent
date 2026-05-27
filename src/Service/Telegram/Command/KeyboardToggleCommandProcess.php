@@ -7,9 +7,9 @@ namespace App\Service\Telegram\Command;
 use App\Document\Message;
 use App\Enum\TelegramBotCommand;
 use App\Repository\UserRepository;
-use App\Service\Telegram\TelegramMessageHelper;
-use App\Service\Telegram\TelegramPersistenceService;
-use App\Service\Telegram\UserMessageSender;
+use App\Service\Telegram\Api\TelegramMessageHelper;
+use App\Service\Telegram\Persistence\TelegramPersistenceService;
+use App\Service\Telegram\UI\UserMessageSender;
 use Psr\Log\LoggerInterface;
 
 final class KeyboardToggleCommandProcess implements CommandProcessInterface

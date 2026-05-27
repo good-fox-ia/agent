@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram\Chat;
+namespace App\Service\Telegram\Chat\UI;
 
 use App\Document\Chat;
 use App\Document\Message;
 use App\Document\User;
-use App\Service\Telegram\TelegramPersistenceService;
-use App\Service\Telegram\TelegramService;
-use App\Service\Telegram\UserMessageSender;
+use App\Service\Telegram\Api\TelegramService;
+use App\Service\Telegram\Persistence\TelegramPersistenceService;
+use App\Service\Telegram\UI\UserMessageSender;
 use Psr\Log\LoggerInterface;
 
 /**
  * Надсилає список бесід користувача з inline-кнопками для вибору.
  */
-final class ChatListPresenter
+final class ChatListResponder
 {
     public const CALLBACK_PREFIX = 'sc:';
 
@@ -130,3 +130,4 @@ final class ChatListPresenter
         }
     }
 }
+

@@ -7,7 +7,7 @@ namespace App\Command;
 use App\Message\Telegram\ProcessTelegramCallback;
 use App\Message\Telegram\ProcessTelegramMessage;
 use App\Service\Telegram\Callback\Dispatcher;
-use App\Service\Telegram\TelegramService;
+use App\Service\Telegram\Api\TelegramService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;

@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram;
+namespace App\Service\Telegram\Persistence;
 
 use App\Document\Chat;
 use App\Document\Message;
 use App\Repository\GroupRepository;
 use App\Repository\MessageRepository;
 use App\Repository\UserRepository;
+use App\Service\Telegram\Api\TelegramMessageHelper;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Psr\Log\LoggerInterface;
 
@@ -136,3 +137,4 @@ final class TelegramPersistenceService
         return $logicalChat;
     }
 }
+

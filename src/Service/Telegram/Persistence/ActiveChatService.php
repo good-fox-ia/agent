@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram;
+namespace App\Service\Telegram\Persistence;
 
 use App\Document\Chat;
 use App\Document\Group;
@@ -38,3 +38,4 @@ final class ActiveChatService
         return $this->chats->createForGroup($group);
     }
 }
+

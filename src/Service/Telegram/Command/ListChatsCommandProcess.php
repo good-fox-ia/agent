@@ -7,16 +7,16 @@ namespace App\Service\Telegram\Command;
 use App\Document\Message;
 use App\Enum\TelegramBotCommand;
 use App\Repository\UserRepository;
-use App\Service\Telegram\Chat\ChatListPresenter;
-use App\Service\Telegram\TelegramMessageHelper;
-use App\Service\Telegram\TelegramService;
+use App\Service\Telegram\Chat\UI\ChatListResponder;
+use App\Service\Telegram\Api\TelegramMessageHelper;
+use App\Service\Telegram\Api\TelegramService;
 use Psr\Log\LoggerInterface;
 
 final class ListChatsCommandProcess implements CommandProcessInterface
 {
     public function __construct(
         private readonly UserRepository $users,
-        private readonly ChatListPresenter $chatListPresenter,
+        private readonly ChatListResponder $chatListPresenter,
         private readonly TelegramService $telegram,
         private readonly LoggerInterface $logger,
     ) {}

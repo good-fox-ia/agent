@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram;
+namespace App\Service\Telegram\UI;
 
 use App\Document\User;
 use App\Repository\UserRepository;
+use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Keyboard\UserReplyMarkupResolver;
 
 /**
@@ -19,9 +20,6 @@ final class UserMessageSender
         private readonly UserReplyMarkupResolver $replyMarkup,
     ) {}
 
-
-
-    
     /**
      * @param array<string, mixed> $options
      *
@@ -53,3 +51,4 @@ final class UserMessageSender
         return $this->telegram->sendMessage($chatId, $text, $options);
     }
 }
+

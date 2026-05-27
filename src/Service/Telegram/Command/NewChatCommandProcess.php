@@ -9,10 +9,10 @@ use App\Enum\TelegramBotCommand;
 use App\Repository\ChatRepository;
 use App\Repository\GroupRepository;
 use App\Repository\UserRepository;
-use App\Service\Telegram\TelegramMessageHelper;
-use App\Service\Telegram\TelegramPersistenceService;
-use App\Service\Telegram\TelegramService;
-use App\Service\Telegram\UserMessageSender;
+use App\Service\Telegram\Api\TelegramMessageHelper;
+use App\Service\Telegram\Api\TelegramService;
+use App\Service\Telegram\Persistence\TelegramPersistenceService;
+use App\Service\Telegram\UI\UserMessageSender;
 use Psr\Log\LoggerInterface;
 
 final class NewChatCommandProcess implements CommandProcessInterface

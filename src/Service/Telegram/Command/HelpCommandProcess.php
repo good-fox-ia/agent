@@ -6,7 +6,7 @@ namespace App\Service\Telegram\Command;
 
 use App\Document\Message;
 use App\Enum\TelegramBotCommand;
-use App\Service\Telegram\WelcomeMessage;
+use App\Service\Telegram\Agent\WelcomeMessage;
 
 final class HelpCommandProcess implements CommandProcessInterface
 {

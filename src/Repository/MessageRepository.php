@@ -9,7 +9,7 @@ use App\Document\Group;
 use App\Document\Message;
 use App\Document\User;
 use App\Enum\MessageType;
-use App\Service\Telegram\TelegramMessageHelper;
+use App\Service\Telegram\Api\TelegramMessageHelper;
 use Doctrine\Bundle\MongoDBBundle\ManagerRegistry;
 use Doctrine\Bundle\MongoDBBundle\Repository\ServiceDocumentRepository;
 

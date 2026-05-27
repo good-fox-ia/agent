@@ -6,10 +6,10 @@ namespace App\Service\LLM\Tool;
 
 use App\Enum\ToolName;
 use App\Repository\UserRepository;
-use App\Service\Telegram\ActiveChatService;
-use App\Service\Telegram\TelegramPersistenceService;
-use App\Service\Telegram\TelegramService;
-use App\Service\Telegram\UserMessageSender;
+use App\Service\Telegram\Api\TelegramService;
+use App\Service\Telegram\Persistence\ActiveChatService;
+use App\Service\Telegram\Persistence\TelegramPersistenceService;
+use App\Service\Telegram\UI\UserMessageSender;
 
 final class SendTelegramMessageTool implements ToolInterface
 {

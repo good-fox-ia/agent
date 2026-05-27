@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram;
+namespace App\Service\Telegram\Agent;
 
 use App\Document\Message;
 use App\Repository\MessageRepository;
 use App\Repository\UserRepository;
+use App\Service\Telegram\Api\TelegramMessageHelper;
+use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Keyboard\UserReplyMarkupResolver;
+use App\Service\Telegram\Persistence\TelegramPersistenceService;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -87,3 +90,4 @@ final class WelcomeMessage
 TEXT;
     }
 }
+

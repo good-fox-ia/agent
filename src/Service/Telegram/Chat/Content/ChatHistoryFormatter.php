@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram\Chat;
+namespace App\Service\Telegram\Chat\Content;
 
 use App\Document\Chat;
 use App\Document\Message;
@@ -88,3 +88,4 @@ final class ChatHistoryFormatter
         return $chunks;
     }
 }
+

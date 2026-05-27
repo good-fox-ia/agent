@@ -7,11 +7,11 @@ namespace App\Service\Telegram\Callback\Handler;
 use App\Repository\ChatRepository;
 use App\Repository\UserRepository;
 use App\Service\Telegram\Callback\CallbackDTO;
-use App\Service\Telegram\Chat\ChatHistoryFormatter;
-use App\Service\Telegram\Chat\ChatSummaryPresenter;
-use App\Service\Telegram\TelegramPersistenceService;
-use App\Service\Telegram\TelegramService;
-use App\Service\Telegram\UserMessageSender;
+use App\Service\Telegram\Chat\Content\ChatHistoryFormatter;
+use App\Service\Telegram\Chat\UI\ChatSummaryResponder;
+use App\Service\Telegram\Api\TelegramService;
+use App\Service\Telegram\Persistence\TelegramPersistenceService;
+use App\Service\Telegram\UI\UserMessageSender;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Psr\Log\LoggerInterface;
 
@@ -33,7 +33,7 @@ final class HistoryProcessor
 
     public function handles(string $data): bool
     {
-        return str_starts_with($data, ChatSummaryPresenter::HISTORY_CALLBACK_PREFIX);
+        return str_starts_with($data, ChatSummaryResponder::HISTORY_CALLBACK_PREFIX);
     }
 
     public function process(CallbackDTO $callback): void
@@ -48,7 +48,7 @@ final class HistoryProcessor
             return;
         }
 
-        $logicalChatId = substr($callback->data, strlen(ChatSummaryPresenter::HISTORY_CALLBACK_PREFIX));
+        $logicalChatId = substr($callback->data, strlen(ChatSummaryResponder::HISTORY_CALLBACK_PREFIX));
         if ($logicalChatId === '') {
             return;
         }

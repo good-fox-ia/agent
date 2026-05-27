@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Service\Telegram;
+namespace App\Service\Telegram\Agent;
 
 use App\Document\Chat;
 use App\Document\Group;
@@ -13,6 +13,11 @@ use App\Repository\MessageRepository;
 use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\InlineToolCallParser;
 use App\Service\LLM\LLMInterface;
+use App\Service\Telegram\Api\TelegramService;
+use App\Service\Telegram\Context\TelegramLlmInvocationContext;
+use App\Service\Telegram\Persistence\ActiveChatService;
+use App\Service\Telegram\Persistence\TelegramPersistenceService;
+use App\Service\Telegram\UI\UserMessageSender;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -218,3 +223,4 @@ PROMPT;
         return $messages;
     }
 }
+

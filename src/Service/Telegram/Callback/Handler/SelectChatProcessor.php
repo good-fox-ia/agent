@@ -7,9 +7,9 @@ namespace App\Service\Telegram\Callback\Handler;
 use App\Repository\ChatRepository;
 use App\Repository\UserRepository;
 use App\Service\Telegram\Callback\CallbackDTO;
-use App\Service\Telegram\Chat\ChatListPresenter;
-use App\Service\Telegram\Chat\UserChatSwitcher;
-use App\Service\Telegram\TelegramService;
+use App\Service\Telegram\Chat\Action\SwitchChatAction;
+use App\Service\Telegram\Chat\UI\ChatListResponder;
+use App\Service\Telegram\Api\TelegramService;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Psr\Log\LoggerInterface;
 
@@ -21,7 +21,7 @@ final class SelectChatProcessor
     public function __construct(
         private readonly UserRepository $users,
         private readonly ChatRepository $chats,
-        private readonly UserChatSwitcher $chatSwitcher,
+        private readonly SwitchChatAction $chatSwitcher,
         private readonly TelegramService $telegram,
         private readonly DocumentManager $documentManager,
         private readonly LoggerInterface $logger,
@@ -29,14 +29,14 @@ final class SelectChatProcessor
 
     public function handles(string $data): bool
     {
-        return str_starts_with($data, ChatListPresenter::CALLBACK_PREFIX);
+        return str_starts_with($data, ChatListResponder::CALLBACK_PREFIX);
     }
 
     public function process(CallbackDTO $callback): void
     {
         if (!$this->handles($callback->data)) return;
 
-        $selectedChatId = substr($callback->data, strlen(ChatListPresenter::CALLBACK_PREFIX));
+        $selectedChatId = substr($callback->data, strlen(ChatListResponder::CALLBACK_PREFIX));
         if ($selectedChatId === '') return;
 
         try {

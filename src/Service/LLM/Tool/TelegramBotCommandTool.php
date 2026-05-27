@@ -7,8 +7,8 @@ namespace App\Service\LLM\Tool;
 use App\Enum\TelegramBotCommand;
 use App\Enum\ToolName;
 use App\Service\Telegram\Command\CommandProcessor;
-use App\Service\Telegram\TelegramLlmInvocationContext;
-use App\Service\Telegram\TelegramMessageHelper;
+use App\Service\Telegram\Api\TelegramMessageHelper;
+use App\Service\Telegram\Context\TelegramLlmInvocationContext;
 
 final class TelegramBotCommandTool implements ToolInterface
 {

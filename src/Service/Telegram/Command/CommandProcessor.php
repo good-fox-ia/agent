@@ -6,7 +6,7 @@ namespace App\Service\Telegram\Command;
 
 use App\Document\Message;
 use App\Enum\TelegramBotCommand;
-use App\Service\Telegram\TelegramMessageHelper;
+use App\Service\Telegram\Api\TelegramMessageHelper;
 use Psr\Log\LoggerInterface;
 
 /**

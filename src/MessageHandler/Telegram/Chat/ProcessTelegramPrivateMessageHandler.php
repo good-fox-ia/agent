@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\MessageHandler\Telegram\Chat;
 
 use App\Message\Telegram\Chat\ProcessTelegramPrivateMessage;
-use App\Service\Telegram\TelegramAgentLlmReplySender;
+use App\Service\Telegram\Agent\TelegramAgentLlmReplySender;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(fromTransport: 'telegram_message_private')]

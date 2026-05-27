@@ -106,7 +106,7 @@ services:
             $apiKey: '%env(GROQ_API_KEY)%'
             $defaultChatModel: '%env(default:groq.chat_model:GROQ_CHAT_MODEL)%'
 
-    App\Service\Telegram\TelegramService:
+    App\Service\Telegram\Api\TelegramService:
         arguments:
             $token: '%env(TELEGRAM_BOT_TOKEN)%'
 

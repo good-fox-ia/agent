@@ -30,6 +30,11 @@ services:
       - telegram_message_private
       - telegram_message_group
 
+  redis:
+    # In production Redis must not be exposed on the host network.
+    # Access is only via the internal Docker network (service name `redis`).
+    ports: []
+
   mongodb:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGODB_ROOT_USERNAME}
