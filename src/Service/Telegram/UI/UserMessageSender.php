@@ -30,7 +30,9 @@ final class UserMessageSender
         return $this->telegram->sendMessage(
             $user->getTelegramUserId(),
             $text,
-            $this->replyMarkup->applyForUser($user, $options),
+            $this->replyMarkup->applyForUser(
+                $user,
+                $this->buildOptions($options)),
         );
     }
 
@@ -41,6 +43,7 @@ final class UserMessageSender
      */
     public function send(int $chatId, string $text, bool $isGroup, array $options = [], ?User $user = null): array
     {
+        $options = $this->buildOptions($options);
         if (!$isGroup) {
             $user ??= $this->users->findOneByTelegramUserId($chatId);
             if ($user !== null) {
@@ -49,6 +52,16 @@ final class UserMessageSender
         }
 
         return $this->telegram->sendMessage($chatId, $text, $options);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     *
+     * @return array<string, mixed>
+     */
+    private function buildOptions(array $options): array
+    {
+        return $options + ['parse_mode' => 'HTML'];
     }
 }
 

@@ -9,6 +9,7 @@ use App\Message\Telegram\Content\ProcessTelegramTextMessage;
 use App\Message\Telegram\ProcessTelegramMessage;
 use App\Service\Telegram\Command\CommandProcessor;
 use App\Service\Telegram\Api\TelegramMessageHelper;
+use App\Service\Telegram\Chat\SharedChatMessenger;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -21,6 +22,7 @@ final class ProcessTelegramMessageHandler
         private readonly TelegramPersistenceService $persistence,
         private readonly MessageBusInterface $bus,
         private readonly CommandProcessor $commandProcessor,
+        private readonly SharedChatMessenger $sharedChatMessenger,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -35,6 +37,10 @@ final class ProcessTelegramMessageHandler
 
         if ($this->commandProcessor->tryProcess($message, $inbound)) {
             return;
+        }
+
+        if ($inbound !== null) {
+            $this->sharedChatMessenger->relayInboundUserMessage($inbound);
         }
 
         if (isset($message['voice']['file_id']) || isset($message['audio']['file_id'])) {

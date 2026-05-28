@@ -86,6 +86,9 @@ final class WelcomeMessage
 💡 Команда <code>/help</code> — короткі підказки.
 🆕 <code>/newchat</code> — нова бесіда (очистити історію в Telegram).
 📋 <code>/listchats</code> — список ваших бесід (обрати кнопкою).
+👥 <code>/friends</code> — список ваших друзів.
+➕ <code>/addfriend @нік</code> — додати друга за нікнеймом.
+🤝 <code>/addtochat @нік</code> — додати користувача до поточної бесіди (спільний чат).
 ⌨️ <code>/keyboardon</code> та <code>/keyboardoff</code> — увімкнути або вимкнути кнопки внизу екрана.
 ⚙️ <code>/edit_system_promt</code> — змінити system prompt для активної бесіди (<code>reset</code> — скинути).
 TEXT;

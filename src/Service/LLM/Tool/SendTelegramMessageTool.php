@@ -7,9 +7,11 @@ namespace App\Service\LLM\Tool;
 use App\Enum\ToolName;
 use App\Repository\UserRepository;
 use App\Service\Telegram\Api\TelegramService;
+use App\Service\Telegram\Context\TelegramLlmInvocationContext;
 use App\Service\Telegram\Persistence\ActiveChatService;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
 use App\Service\Telegram\UI\UserMessageSender;
+use Doctrine\ODM\MongoDB\DocumentManager;
 
 final class SendTelegramMessageTool implements ToolInterface
 {
@@ -21,6 +23,8 @@ final class SendTelegramMessageTool implements ToolInterface
         private readonly TelegramService $telegram,
         private readonly UserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
+        private readonly TelegramLlmInvocationContext $invocationContext,
+        private readonly DocumentManager $documentManager,
     ) {}
 
     public function getName(): ToolName
@@ -78,6 +82,8 @@ final class SendTelegramMessageTool implements ToolInterface
             throw new \InvalidArgumentException(sprintf('User not found: %s', $username));
         }
 
+        $this->autoAddFriend($user);
+
         $text = mb_substr($message, 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
 
         try {
@@ -103,5 +109,25 @@ final class SendTelegramMessageTool implements ToolInterface
             'telegram_user_id' => $user->getTelegramUserId(),
             'message_id' => $sent['message_id'] ?? null,
         ], JSON_THROW_ON_ERROR);
+    }
+
+    private function autoAddFriend(\App\Document\User $recipient): void
+    {
+        if (!$this->invocationContext->isActive()) {
+            return;
+        }
+
+        $from = $this->invocationContext->getTelegramMessage()['from'] ?? null;
+        if (!is_array($from) || !isset($from['id'])) {
+            return;
+        }
+
+        $sender = $this->users->findOneByTelegramUserId((int) $from['id']);
+        if ($sender === null) {
+            return;
+        }
+
+        $sender->addFriend($recipient);
+        $this->documentManager->flush();
     }
 }

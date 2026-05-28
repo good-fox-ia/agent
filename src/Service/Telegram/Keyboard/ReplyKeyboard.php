@@ -17,6 +17,7 @@ final class ReplyKeyboard
             'keyboard' => [
                 [
                     ['text' => TelegramBotCommand::NEW_CHAT->asSlash()],
+                    ['text' => TelegramBotCommand::FRIENDS->asSlash()],
                     ['text' => TelegramBotCommand::HELP->asSlash()],
                 ],
             ],

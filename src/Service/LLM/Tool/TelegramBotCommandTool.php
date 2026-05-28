@@ -18,6 +18,7 @@ final class TelegramBotCommandTool implements ToolInterface
         private readonly string $description,
         private readonly TelegramLlmInvocationContext $invocationContext,
         private readonly CommandProcessor $commandProcessor,
+        private readonly ?string $usernameArgument = null,
     ) {}
 
     public function getName(): ToolName
@@ -27,16 +28,31 @@ final class TelegramBotCommandTool implements ToolInterface
 
     public function getDescription(): array
     {
+        $parameters = [
+            'type' => 'object',
+            'properties' => (object) [],
+            'required' => [],
+        ];
+
+        if ($this->usernameArgument !== null) {
+            $parameters = [
+                'type' => 'object',
+                'properties' => [
+                    $this->usernameArgument => [
+                        'type' => 'string',
+                        'description' => 'Telegram username of the friend to add, with or without @.',
+                    ],
+                ],
+                'required' => [$this->usernameArgument],
+            ];
+        }
+
         return [
             'type' => 'function',
             'function' => [
                 'name' => $this->getName()->value,
                 'description' => $this->description,
-                'parameters' => [
-                    'type' => 'object',
-                    'properties' => (object) [],
-                    'required' => [],
-                ],
+                'parameters' => $parameters,
             ],
         ];
     }
@@ -47,10 +63,17 @@ final class TelegramBotCommandTool implements ToolInterface
             throw new \RuntimeException('Telegram command tools are only available during a Telegram chat LLM reply.');
         }
 
-        $telegramMessage = TelegramMessageHelper::withCommandText(
-            $this->invocationContext->getTelegramMessage(),
-            $this->command,
-        );
+        $commandArgs = $this->resolveCommandArguments($arguments);
+        $telegramMessage = $commandArgs !== ''
+            ? TelegramMessageHelper::withCommandTextAndArgs(
+                $this->invocationContext->getTelegramMessage(),
+                $this->command,
+                $commandArgs,
+            )
+            : TelegramMessageHelper::withCommandText(
+                $this->invocationContext->getTelegramMessage(),
+                $this->command,
+            );
 
         $processed = $this->commandProcessor->process(
             $this->command,
@@ -67,5 +90,22 @@ final class TelegramBotCommandTool implements ToolInterface
                 ? 'Command executed in Telegram. Do not repeat the bot automatic confirmation to the user.'
                 : 'Command was not handled.',
         ], JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @param array<string, mixed> $arguments
+     */
+    private function resolveCommandArguments(array $arguments): string
+    {
+        if ($this->usernameArgument === null) {
+            return '';
+        }
+
+        $value = $arguments[$this->usernameArgument] ?? null;
+        if (!is_string($value)) {
+            throw new \InvalidArgumentException(sprintf('%s is required.', $this->usernameArgument));
+        }
+
+        return trim($value);
     }
 }

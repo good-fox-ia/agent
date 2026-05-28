@@ -13,6 +13,9 @@ enum TelegramBotCommand: string
     case KEYBOARD_OFF = 'keyboardoff';
     case LIST_CHATS = 'listchats';
     case EDIT_SYSTEM_PROMPT = 'edit_system_promt';
+    case FRIENDS = 'friends';
+    case ADD_FRIEND = 'addfriend';
+    case ADD_TO_CHAT = 'addtochat';
 
     public function asSlash(): string
     {

@@ -111,6 +111,38 @@ services:
             $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_EDIT_SYSTEM_PROMPT
             $description: 'Run the /edit_system_promt bot command: view or change the LLM system prompt for the active conversation. Use when the user wants custom instructions for this chat. Args: new prompt text, or "reset" to clear. Same as typing /edit_system_promt in Telegram.'
 
+    App\Service\LLM\Tool\TelegramBotCommandTool.friends:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::FRIENDS
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_FRIENDS
+            $description: 'Run the /friends bot command: show the user their friends list (usernames and names). Use when the user wants to see friends or who is in their friends list — same as typing /friends in Telegram.'
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.add_friend:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::ADD_FRIEND
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_ADD_FRIEND
+            $description: 'Run the /addfriend bot command: add a user to the friends list by Telegram username. The user must have messaged the bot at least once. Same as typing /addfriend @username in Telegram.'
+            $usernameArgument: 'username'
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.add_to_chat:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::ADD_TO_CHAT
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_ADD_TO_CHAT
+            $description: 'Run the /addtochat bot command: add a user to the inviter current conversation as a shared 2-user chat. Also adds them as a friend. The guest gets a button to open the shared chat. Requires username. Same as /addtochat @username in Telegram.'
+            $usernameArgument: 'username'
+
     App\Service\LLM\Groq:
         arguments:
             $apiKey: '%env(GROQ_API_KEY)%'
