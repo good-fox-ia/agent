@@ -69,6 +69,8 @@ final class MessageRepository extends ServiceDocumentRepository
 
     public function deleteAllForTelegramChat(int $telegramChatId): void
     {
+        return;
+        
         $messages = $this->findBy(['telegramChatId' => $telegramChatId]);
         if ($messages === []) {
             return;

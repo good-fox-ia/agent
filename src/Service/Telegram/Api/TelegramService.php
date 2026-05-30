@@ -60,6 +60,8 @@ class TelegramService
 
     public function deleteMessage(string|int $chatId, int $messageId): bool
     {
+        return false;
+        
         try {
             $this->callApi('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
 
