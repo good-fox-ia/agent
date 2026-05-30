@@ -7,6 +7,7 @@ namespace App\Service\Telegram\Video;
 use App\Repository\MessageRepository;
 use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
+use App\Service\Telegram\UI\UserMessageSender;
 use Psr\Log\LoggerInterface;
 
 /**
