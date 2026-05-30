@@ -110,17 +110,7 @@ PROMPT;
             $this->logger->error('Помилка LLM/sendMessage chat={chat}: {error}', [
                 'chat' => $telegramChatId,
                 'error' => $e->getMessage(),
-            ]);
-            try {
-                $sent = $this->messageSender->send(
-                    $telegramChatId,
-                    mb_substr('Помилка: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
-                    $isGroup,
-                );
-                $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound, $logicalChat);
-            } catch (\Throwable) {
-                // ignore secondary failure
-            }
+            ], $e);
         } finally {
             $this->invocationContext->clear();
         }

@@ -20,8 +20,6 @@ use Symfony\Component\Messenger\MessageBusInterface;
 #[AsMessageHandler(fromTransport: 'telegram_audio')]
 final class ProcessTelegramAudioMessageHandler
 {
-    private const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
-
     public function __construct(
         private readonly TelegramService $telegram,
         private readonly UserMessageSender $messageSender,
@@ -86,16 +84,10 @@ final class ProcessTelegramAudioMessageHandler
                 $this->bus->dispatch(new ProcessTelegramPrivateMessage($telegramChatId, $telegramMessageId, $payload));
             }
         } catch (\Throwable $e) {
-            $this->logger->error('voice/audio chat={chat}: {error}', ['chat' => (string) $chatId, 'error' => $e->getMessage()]);
-            try {
-                $sent = $this->messageSender->send(
-                    $telegramChatId,
-                    mb_substr('Помилка обробки аудіо: '.$e->getMessage(), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH),
-                    $isGroup,
-                );
-                $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
-            } catch (\Throwable) {
-            }
+            $this->logger->error('voice/audio chat={chat}: {error}', [
+                'chat' => (string) $chatId,
+                'error' => $e->getMessage(),
+            ], $e);
         }
     }
 

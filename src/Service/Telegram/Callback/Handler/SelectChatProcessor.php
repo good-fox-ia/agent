@@ -56,10 +56,10 @@ final class SelectChatProcessor
             $this->chatSwitcher->switchTo($user, $selectedChat, $callback->chatId, null, $isGroup);
 
         } catch (\Throwable $e) {
-            $this->logger->error('Помилка callback вибору бесіди: {error}', ['error' => $e->getMessage()]);
+            $this->logger->error('Помилка callback вибору бесіди: {error}', ['error' => $e->getMessage()], $e);
             if ($callback->callbackId !== '') {
                 try {
-                    $this->telegram->answerCallbackQuery($callback->callbackId, 'Помилка перемикання');
+                    $this->telegram->answerCallbackQuery($callback->callbackId);
                 } catch (\Throwable) {
                     // ignore
                 }

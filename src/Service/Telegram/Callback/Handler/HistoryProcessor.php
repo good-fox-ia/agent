@@ -77,10 +77,10 @@ final class HistoryProcessor
                 $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, null, $logicalChat);
             }
         } catch (\Throwable $e) {
-            $this->logger->error('Помилка callback історії бесіди: {error}', ['error' => $e->getMessage()]);
+            $this->logger->error('Помилка callback історії бесіди: {error}', ['error' => $e->getMessage()], $e);
             if ($callback->callbackId !== '') {
                 try {
-                    $this->telegram->answerCallbackQuery($callback->callbackId, 'Помилка надсилання');
+                    $this->telegram->answerCallbackQuery($callback->callbackId);
                 } catch (\Throwable) {
                     // ignore
                 }

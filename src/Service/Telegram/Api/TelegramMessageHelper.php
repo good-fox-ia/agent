@@ -99,12 +99,21 @@ final class TelegramMessageHelper
      *
      * @return array<string, mixed>
      */
-    public static function withCommandText(array $telegramMessage, TelegramBotCommand $command): array
+    public static function withVisibleTextBody(array $telegramMessage, string $text): array
     {
         $message = $telegramMessage;
-        $message['text'] = $command->asSlash();
+        if (isset($message['caption'])) {
+            $message['caption'] = $text;
+        } else {
+            $message['text'] = $text;
+        }
 
         return $message;
+    }
+
+    public static function withCommandText(array $telegramMessage, TelegramBotCommand $command): array
+    {
+        return self::withVisibleTextBody($telegramMessage, $command->asSlash());
     }
 
     public static function commandArguments(array $telegramMessage): string
