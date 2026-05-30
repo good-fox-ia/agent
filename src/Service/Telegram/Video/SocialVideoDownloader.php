@@ -29,10 +29,16 @@ final class SocialVideoDownloader
 
     private const DENO_BINARY = '/usr/local/bin/deno';
 
+    private const INSTAGRAM_COOKIES_FILE = 'var/cookies/instagram.txt';
+
+    /** CRF для перекодування vp9→h264 під час merge (Telegram погано їсть vp9 у mp4). */
+    private const INSTAGRAM_CRF = 28;
+
     public function __construct(
         private readonly string $ytDlpBinary,
         private readonly string $downloadDir,
         private readonly string $cookiesFile,
+        private readonly string $projectDir,
     ) {}
 
     /**
@@ -109,20 +115,64 @@ final class SocialVideoDownloader
         return str_contains($host, 'youtube.com') || str_contains($host, 'youtu.be');
     }
 
+    private function isInstagramUrl(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return str_contains($host, 'instagram.com');
+    }
+
+    private function resolveCookiesFile(string $url): string
+    {
+        if ($this->isInstagramUrl($url)) {
+            return $this->projectDir.'/'.self::INSTAGRAM_COOKIES_FILE;
+        }
+
+        return $this->cookiesFile;
+    }
+
     /**
-     * @return list<array{format: string, player_client: string|null}>
+     * @return list<array{format: string, player_client: string|null, extra_args: list<string>}>
      */
     private function downloadAttempts(string $url): array
     {
-        if (!$this->isYouTubeUrl($url)) {
+        if ($this->isYouTubeUrl($url)) {
             return [
-                ['format' => self::DEFAULT_FORMAT, 'player_client' => null],
+                ['format' => self::YOUTUBE_FORMAT, 'player_client' => self::YOUTUBE_PLAYER_CLIENT, 'extra_args' => []],
+                ['format' => self::YOUTUBE_FALLBACK_FORMAT, 'player_client' => self::YOUTUBE_FALLBACK_PLAYER_CLIENT, 'extra_args' => []],
+            ];
+        }
+
+        if ($this->isInstagramUrl($url)) {
+            return [
+                ['format' => $this->instagramFormat(), 'player_client' => null, 'extra_args' => $this->instagramExtraArgs()],
             ];
         }
 
         return [
-            ['format' => self::YOUTUBE_FORMAT, 'player_client' => self::YOUTUBE_PLAYER_CLIENT],
-            ['format' => self::YOUTUBE_FALLBACK_FORMAT, 'player_client' => self::YOUTUBE_FALLBACK_PLAYER_CLIENT],
+            ['format' => self::DEFAULT_FORMAT, 'player_client' => null, 'extra_args' => []],
+        ];
+    }
+
+    private function instagramFormat(): string
+    {
+        // Instagram не має форматів ≤480p у метаданих (усі 720×1280). Беремо найменший dash-потік.
+        return 'bv+ba/b';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function instagramExtraArgs(): array
+    {
+        return [
+            '-S',
+            '+size',
+            '--postprocessor-args',
+            sprintf(
+                'Merger+ffmpeg:-c:v libx264 -crf %d -preset veryfast -c:a aac -b:a 64k -movflags +faststart',
+                self::INSTAGRAM_CRF,
+            ),
         ];
     }
 
@@ -139,6 +189,8 @@ final class SocialVideoDownloader
                 $outputTemplate,
                 $attempt['format'],
                 $attempt['player_client'],
+                $this->resolveCookiesFile($url),
+                $attempt['extra_args'],
             ));
             $process->setTimeout(300);
             $this->runProcess($process, $heartbeat);
@@ -184,6 +236,8 @@ final class SocialVideoDownloader
         string $outputTemplate,
         string $format,
         ?string $youtubePlayerClient = null,
+        string $cookiesFile = '',
+        array $extraArgs = [],
     ): array {
         $command = [
             $this->ytDlpBinary,
@@ -205,9 +259,13 @@ final class SocialVideoDownloader
             $command[] = 'youtube:player_client='.$youtubePlayerClient;
         }
 
-        if ($this->cookiesFile !== '' && is_readable($this->cookiesFile)) {
+        if ($cookiesFile !== '' && is_readable($cookiesFile)) {
             $command[] = '--cookies';
-            $command[] = $this->cookiesFile;
+            $command[] = $cookiesFile;
+        }
+
+        foreach ($extraArgs as $arg) {
+            $command[] = $arg;
         }
 
         $command[] = '-f';
@@ -239,7 +297,7 @@ final class SocialVideoDownloader
 
         if (str_contains($output, '[Instagram]')) {
             if (str_contains($output, 'login required') || str_contains($output, 'rate-limit')) {
-                return 'Instagram вимагає cookies. Експортуйте cookies з браузера (Netscape) у файл і вкажіть SOCIAL_VIDEO_COOKIES_FILE у .env.local.';
+                return 'Instagram вимагає cookies. Експортуйте cookies з браузера (Netscape) у var/cookies/instagram.txt.';
             }
 
             return 'Не вдалося завантажити Instagram Reel.';

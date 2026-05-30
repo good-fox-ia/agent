@@ -148,6 +148,7 @@ services:
             $ytDlpBinary: '%env(default:telegram.social_video.yt_dlp_binary:SOCIAL_VIDEO_YT_DLP_BINARY)%'
             $downloadDir: '%kernel.cache_dir%/social_video'
             $cookiesFile: '%env(default:telegram.social_video.cookies_file:SOCIAL_VIDEO_COOKIES_FILE)%'
+            $projectDir: '%kernel.project_dir%'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
