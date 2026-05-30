@@ -32,6 +32,17 @@ final class CommandProcessor
 
     public function process(TelegramBotCommand $command, array $telegramMessage, ?Message $inbound): bool
     {
+        $scope = TelegramMessageHelper::commandScope($telegramMessage);
+        if (!$command->isAvailableIn($scope)) {
+            $this->logger->info('Telegram command /{command} недоступна в scope={scope} chat={chat}', [
+                'command' => $command->value,
+                'scope' => $scope->value,
+                'chat' => (string) ($telegramMessage['chat']['id'] ?? ''),
+            ]);
+
+            return true;
+        }
+
         foreach ($this->processes as $process) {
             if (!$process->handles($command)) {
                 continue;

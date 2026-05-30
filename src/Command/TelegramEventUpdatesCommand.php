@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Message\Telegram\ProcessTelegramCallback;
 use App\Message\Telegram\ProcessTelegramMessage;
 use App\Service\Telegram\Callback\Dispatcher;
+use App\Service\Telegram\Api\TelegramBotCommandsRegistrar;
 use App\Service\Telegram\Api\TelegramService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -24,6 +25,7 @@ final class TelegramEventUpdatesCommand extends Command
 {
     public function __construct(
         private readonly TelegramService $telegram,
+        private readonly TelegramBotCommandsRegistrar $commandsRegistrar,
         private readonly MessageBusInterface $bus,
         private readonly Dispatcher $callbackDispatcher,
     ) {
@@ -48,7 +50,12 @@ final class TelegramEventUpdatesCommand extends Command
 
         $io->note('Long polling. Зупинка: Ctrl+C');
 
-
+        try {
+            $this->commandsRegistrar->register();
+            $io->writeln('Команди бота зареєстровано в Telegram');
+        } catch (\Throwable $e) {
+            $io->warning('Не вдалося зареєструвати команди: ' . $e->getMessage());
+        }
 
         $offset = 0;
         while (true) {

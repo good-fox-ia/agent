@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Telegram\Api;
 
 use App\Enum\TelegramBotCommand;
+use App\Enum\TelegramBotCommandScope;
 
 /**
  * Допоміжний розбір полів JSON повідомлення Telegram (без доступу до БД).
@@ -20,12 +21,63 @@ final class TelegramMessageHelper
         return in_array($chatType, ['group', 'supergroup'], true);
     }
 
+    public static function commandScope(array $telegramMessage): TelegramBotCommandScope
+    {
+        return self::isGroup($telegramMessage)
+            ? TelegramBotCommandScope::GROUP
+            : TelegramBotCommandScope::PRIVATE;
+    }
+
     public static function visibleTextBody(array $telegramMessage): string
     {
         if (isset($telegramMessage['text'])) return trim((string) $telegramMessage['text']);
         if (isset($telegramMessage['caption'])) return trim((string) $telegramMessage['caption']);
 
         return '';
+    }
+
+    /**
+     * @param array<string, mixed> $telegramMessage
+     *
+     * @return list<string>
+     */
+    public static function extractUrls(array $telegramMessage): array
+    {
+        $urls = [];
+        $text = self::visibleTextBody($telegramMessage);
+        if ($text !== '' && preg_match_all('#https?://[^\s<>"\'\)\]]+#i', $text, $matches)) {
+            foreach ($matches[0] as $url) {
+                $urls[] = rtrim($url, '.,;:!?');
+            }
+        }
+
+        $entitiesKey = isset($telegramMessage['caption']) ? 'caption_entities' : 'entities';
+        $entities = $telegramMessage[$entitiesKey] ?? [];
+        if (!is_array($entities) || $text === '') {
+            return array_values(array_unique($urls));
+        }
+
+        foreach ($entities as $entity) {
+            if (!is_array($entity)) {
+                continue;
+            }
+
+            $type = (string) ($entity['type'] ?? '');
+            if ($type === 'text_link' && isset($entity['url'])) {
+                $urls[] = rtrim((string) $entity['url'], '.,;:!?');
+                continue;
+            }
+
+            if ($type === 'url') {
+                $offset = (int) ($entity['offset'] ?? 0);
+                $length = (int) ($entity['length'] ?? 0);
+                if ($length > 0) {
+                    $urls[] = rtrim(mb_substr($text, $offset, $length), '.,;:!?');
+                }
+            }
+        }
+
+        return array_values(array_unique($urls));
     }
 
     public static function parseBotCommand(array $telegramMessage): ?TelegramBotCommand

@@ -11,7 +11,6 @@ use App\Repository\MessageRepository;
 use App\Service\LLM\LLMInterface;
 use App\Service\Telegram\Api\TelegramMessageHelper;
 use App\Service\Telegram\Api\TelegramService;
-use App\Service\Telegram\Chat\SharedChatMessenger;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
 use App\Service\Telegram\UI\UserMessageSender;
 use Psr\Log\LoggerInterface;
@@ -29,7 +28,6 @@ final class ProcessTelegramAudioMessageHandler
         private readonly LLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly TelegramPersistenceService $persistence,
-        private readonly SharedChatMessenger $sharedChatMessenger,
         private readonly MessageBusInterface $bus,
         private readonly LoggerInterface $logger,
     ) {}
@@ -75,11 +73,6 @@ final class ProcessTelegramAudioMessageHandler
                 $this->messages->saveInboundTextAfterTranscription($telegramChatId, $telegramMessageId, $transcript);
             } catch (\Throwable $e) {
                 $this->logger->warning('Оновлення Message (транскрипт): {error}', ['error' => $e->getMessage()]);
-            }
-
-            $storedInbound = $this->messages->findOneByTelegramMessageIds($telegramChatId, $telegramMessageId);
-            if ($storedInbound !== null) {
-                $this->sharedChatMessenger->relayInboundUserMessage($storedInbound);
             }
 
             $this->logger->info('Транскрипт голосу chat={chat} preview={preview}', [

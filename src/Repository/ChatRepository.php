@@ -21,7 +21,7 @@ final class ChatRepository extends ServiceDocumentRepository
     {
         $chat = new Chat();
         $chat->setTitle(sprintf('Бесіда #%d', $user->getChats()->count() + 1));
-        $chat->addUser($user);
+        $chat->setUser($user);
 
         $user->addChat($chat);
         $user->setCurrentChat($chat);

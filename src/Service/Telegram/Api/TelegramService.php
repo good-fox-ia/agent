@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Telegram\Api;
 
+use App\Enum\TelegramBotCommandScope;
 use App\Service\Http\Client;
 
 class TelegramService
@@ -24,6 +25,11 @@ class TelegramService
         $decoded = $this->callApi('sendMessage', $body);
 
         return $decoded['result'] ?? $decoded;
+    }
+
+    public function sendChatAction(string|int $chatId, string $action = 'typing'): void
+    {
+        $this->callApi('sendChatAction', ['chat_id' => $chatId, 'action' => $action]);
     }
 
     public function removeReplyKeyboard(string|int $chatId, string $text = ''): array
@@ -78,6 +84,25 @@ class TelegramService
         }
     }
 
+    /**
+     * @param list<array{command: string, description: string}> $commands
+     */
+    public function setMyCommands(
+        array $commands,
+        ?TelegramBotCommandScope $scope = null,
+        ?string $languageCode = null,
+    ): void {
+        $body = ['commands' => $commands];
+        if ($scope !== null) {
+            $body['scope'] = $scope->toTelegramScope();
+        }
+        if ($languageCode !== null && $languageCode !== '') {
+            $body['language_code'] = $languageCode;
+        }
+
+        $this->callApi('setMyCommands', $body);
+    }
+
     public function getUpdates(int $offset = 0, int $timeout = 30, int $limit = 100): array
     {
         $decoded = $this->callApi('getUpdates', [
@@ -109,12 +134,43 @@ class TelegramService
         return $this->httpClient->get($url);
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
+    public function sendVideo(string|int $chatId, string $videoPath, array $options = []): array
+    {
+        $handle = fopen($videoPath, 'rb');
+        if ($handle === false) {
+            throw new \RuntimeException('Не вдалося відкрити файл відео.');
+        }
+
+        try {
+            $body = array_merge(['chat_id' => $chatId, 'video' => $handle], $options);
+            $decoded = $this->callApiMultipart('sendVideo', $body);
+
+            return $decoded['result'] ?? $decoded;
+        } finally {
+            fclose($handle);
+        }
+    }
+
     private function callApi(string $method, array $body): array
     {
         $this->assertToken();
 
         $url = sprintf('https://api.telegram.org/bot%s/%s', $this->token, $method);
         $decoded = $this->httpClient->post($url, $body);
+        $this->isValidDecoded($decoded);
+
+        return $decoded;
+    }
+
+    private function callApiMultipart(string $method, array $body): array
+    {
+        $this->assertToken();
+
+        $url = sprintf('https://api.telegram.org/bot%s/%s', $this->token, $method);
+        $decoded = $this->httpClient->postMultipart($url, $body);
         $this->isValidDecoded($decoded);
 
         return $decoded;

@@ -15,8 +15,6 @@ use App\Service\LLM\InlineToolCallParser;
 use App\Service\LLM\LLMInterface;
 use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Chat\Content\ChatTitleGenerator;
-use App\Service\Telegram\Chat\SharedChatHelper;
-use App\Service\Telegram\Chat\SharedChatMessenger;
 use App\Service\Telegram\Context\TelegramLlmInvocationContext;
 use App\Service\Telegram\Persistence\ActiveChatService;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
@@ -35,9 +33,7 @@ final class TelegramAgentLlmReplySender
     private const LLM_SYSTEM_PROMPT = <<<'PROMPT'
 Ти корисний асистент. Відповідай українською, стисло та по суті.
 
-Якщо користувач просить те саме, що роблять команди бота (/start, /help, /newchat, /keyboardon, /keyboardoff, /listchats, /friends, /addfriend, /addtochat, /edit_system_promt), виклич відповідний інструмент telegram_command_* замість імітації команди текстом. Після виконання такого інструменту не дублюй автоматичні повідомлення бота — коротко підтвердь або промовчи, якщо відповідь вже надіслана.
-
-У спільній бесіді двох користувачів враховуй повідомлення обох учасників (вони позначені іменем). Відповідай так, ніби ви всі в одному чаті.
+Якщо користувач просить те саме, що роблять команди бота (/start, /help, /newchat, /keyboardon, /keyboardoff, /listchats, /friends, /addfriend, /edit_system_promt), виклич відповідний інструмент telegram_command_* замість імітації команди текстом. Після виконання такого інструменту не дублюй автоматичні повідомлення бота — коротко підтвердь або промовчи, якщо відповідь вже надіслана.
 PROMPT;
 
     public function __construct(
@@ -51,8 +47,6 @@ PROMPT;
         private readonly TelegramLlmInvocationContext $invocationContext,
         private readonly InlineToolCallParser $inlineToolCallParser,
         private readonly ChatTitleGenerator $chatTitleGenerator,
-        private readonly SharedChatHelper $sharedChat,
-        private readonly SharedChatMessenger $sharedChatMessenger,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -107,11 +101,6 @@ PROMPT;
             }
             $sent = $this->messageSender->send($telegramChatId, $answer, $isGroup);
             $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound, $logicalChat);
-
-            $triggerAuthor = $replyToInbound?->getAuthor();
-            if (!$isGroup && $triggerAuthor instanceof User && $this->sharedChat->isSharedPrivateChat($logicalChat)) {
-                $this->sharedChatMessenger->relayAgentReply($logicalChat, $triggerAuthor, $answer, $replyToInbound);
-            }
 
             if (!$isGroup) {
                 $this->chatTitleGenerator->updateTitleIfNeeded($logicalChat);
@@ -215,7 +204,6 @@ PROMPT;
     {
         $custom = $chat->getSystemPrompt();
         $base = self::LLM_SYSTEM_PROMPT
-            . $this->buildSharedChatContextSuffix($chat)
             . $this->buildFriendsContextSuffix($chat);
 
         if ($custom === null || trim($custom) === '') {
@@ -225,24 +213,6 @@ PROMPT;
         return $base
             . "\n\nДодаткові інструкції для цієї бесіди:\n"
             . trim($custom);
-    }
-
-    private function buildSharedChatContextSuffix(Chat $chat): string
-    {
-        if (!$this->sharedChat->isSharedPrivateChat($chat)) {
-            return '';
-        }
-
-        $labels = [];
-        foreach ($this->sharedChat->participants($chat) as $participant) {
-            $labels[] = sprintf(
-                '%s (%s)',
-                $this->sharedChat->formatUserLabel($participant),
-                $this->sharedChat->formatUserDisplayName($participant),
-            );
-        }
-
-        return "\n\nСпільна бесіда між: " . implode(' та ', $labels) . '.';
     }
 
     private function buildFriendsContextSuffix(Chat $chat): string
@@ -307,34 +277,11 @@ PROMPT;
             }
             $messages[] = [
                 'role' => $role,
-                'content' => $this->formatContentForLlm($chat, $doc, $t),
+                'content' => $t,
             ];
         }
 
         return $messages;
-    }
-
-    private function formatContentForLlm(Chat $chat, \App\Document\Message $doc, string $text): string
-    {
-        if (!$this->sharedChat->isSharedPrivateChat($chat)) {
-            return $text;
-        }
-
-        $author = $doc->getAuthor();
-        if ($author === null) {
-            return $text;
-        }
-
-        $isUser = match ($doc->getType()) {
-            MessageType::UserPrivate, MessageType::UserGroup => true,
-            MessageType::AgentPrivate, MessageType::AgentGroup => false,
-        };
-
-        if (!$isUser) {
-            return $text;
-        }
-
-        return sprintf('[%s] %s', $this->sharedChat->formatUserDisplayName($author), $text);
     }
 }
 

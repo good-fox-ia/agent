@@ -19,6 +19,8 @@ x-php: &php
     MONGODB_DB: app
     REDIS_URL: redis://redis:6379
     MESSENGER_TRANSPORT_DSN: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/%2f
+    # yt-dlp з pip у контейнері (не debian /usr/bin/yt-dlp і не macOS Homebrew)
+    SOCIAL_VIDEO_YT_DLP_BINARY: /usr/local/bin/yt-dlp
   depends_on:
     - mongodb
     - redis

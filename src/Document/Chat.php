@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Document;
 
 use App\Repository\ChatRepository;
-use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Document;
 use Doctrine\ODM\MongoDB\Mapping\Attribute\Field;
@@ -29,9 +28,8 @@ final class Chat
     #[Field(type: 'string', nullable: true)]
     private ?string $systemPrompt = null;
 
-    /** @var Collection<int, User> */
-    #[ReferenceMany(targetDocument: User::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
-    private Collection $users;
+    #[ReferenceOne(targetDocument: User::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
+    private ?User $user = null;
 
     /** @var Collection<int, Message> */
     #[ReferenceMany(targetDocument: Message::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
@@ -48,8 +46,7 @@ final class Chat
 
     public function __construct()
     {
-        $this->users = new ArrayCollection();
-        $this->messages = new ArrayCollection();
+        $this->messages = new \Doctrine\Common\Collections\ArrayCollection();
         $this->createdAt = new \DateTimeImmutable();
         $this->updatedAt = $this->createdAt;
     }
@@ -83,31 +80,16 @@ final class Chat
         return $this->touchUpdatedAt();
     }
 
-    /**
-     * @return Collection<int, User>
-     */
-    public function getUsers(): Collection
+    public function getUser(): ?User
     {
-        return $this->users;
+        return $this->user;
     }
 
-    public function addUser(User $user): self
+    public function setUser(?User $user): self
     {
-        if (!$this->users->contains($user)) {
-            $this->users->add($user);
-            $this->touchUpdatedAt();
-        }
+        $this->user = $user;
 
-        return $this;
-    }
-
-    public function removeUser(User $user): self
-    {
-        if ($this->users->removeElement($user)) {
-            $this->touchUpdatedAt();
-        }
-
-        return $this;
+        return $this->touchUpdatedAt();
     }
 
     /**

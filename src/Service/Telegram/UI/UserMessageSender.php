@@ -55,6 +55,34 @@ final class UserMessageSender
     }
 
     /**
+     * Надсилає URL з увімкненим link preview (вбудований плеєр Telegram, як у звичайному чаті).
+     *
+     * @return array<string, mixed>
+     */
+    public function sendUrlWithPreview(int $chatId, string $url, bool $isGroup, ?string $caption = null): array
+    {
+        $text = $caption !== null && $caption !== '' ? $caption."\n".$url : $url;
+
+        $options = [
+            'link_preview_options' => [
+                'is_disabled' => false,
+                'url' => $url,
+                'prefer_large_media' => true,
+                'show_above_text' => true,
+            ],
+        ];
+
+        if (!$isGroup) {
+            $user = $this->users->findOneByTelegramUserId($chatId);
+            if ($user !== null) {
+                $options = $this->replyMarkup->applyForUser($user, $options);
+            }
+        }
+
+        return $this->telegram->sendMessage($chatId, $text, $options);
+    }
+
+    /**
      * @param array<string, mixed> $options
      *
      * @return array<string, mixed>

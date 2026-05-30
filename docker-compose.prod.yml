@@ -7,6 +7,7 @@ x-php-prod-environment: &php-prod-environment
   MONGODB_URI: mongodb://${MONGODB_ROOT_USERNAME}:${MONGODB_ROOT_PASSWORD}@mongodb:27017/?authSource=admin
   MONGODB_DB: ${MONGODB_DB}
   MESSENGER_TRANSPORT_DSN: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
+  SOCIAL_VIDEO_YT_DLP_BINARY: /usr/local/bin/yt-dlp
 
 services:
   php:
