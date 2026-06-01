@@ -8,6 +8,7 @@ use Symfony\Component\Process\Process;
 
 /**
  * Завантажує відео за URL через yt-dlp у тимчасову директорію.
+ * Підпис під відео (description/caption) читається з .info.json, який yt-dlp пише поруч із файлом.
  */
 final class SocialVideoDownloader
 {
@@ -32,7 +33,7 @@ final class SocialVideoDownloader
     private const INSTAGRAM_COOKIES_FILE = 'var/cookies/instagram.txt';
 
     /** CRF для перекодування vp9→h264 під час merge (Telegram погано їсть vp9 у mp4). */
-    private const INSTAGRAM_CRF = 28;
+    private const INSTAGRAM_CRF = 23;
 
     public function __construct(
         private readonly string $ytDlpBinary,
@@ -44,7 +45,7 @@ final class SocialVideoDownloader
     /**
      * @param (callable(): void)|null $heartbeat Викликається під час завантаження (напр. typing у Telegram).
      */
-    public function download(string $url, ?callable $heartbeat = null): string
+    public function download(string $url, ?callable $heartbeat = null): SocialVideoDownloadDTO
     {
         $url = $this->normalizePageUrl($url);
 
@@ -66,18 +67,16 @@ final class SocialVideoDownloader
             throw $e;
         }
 
-        $files = glob($workDir.'/*') ?: [];
-        $videoFiles = array_values(array_filter(
-            $files,
-            static fn (string $path): bool => is_file($path) && !str_ends_with($path, '.part'),
-        ));
-
-        if ($videoFiles === []) {
+        $videoPath = $this->findDownloadedVideoPath($workDir);
+        if ($videoPath === null) {
             $this->removeWorkDir($workDir);
             throw new \RuntimeException('Файл відео не знайдено після завантаження.');
         }
 
-        return $videoFiles[0];
+        return new SocialVideoDownloadDTO(
+            $videoPath,
+            $this->readCaptionFromInfoJson($workDir),
+        );
     }
 
     public function removeDownloadedFile(string $path): void
@@ -243,6 +242,7 @@ final class SocialVideoDownloader
             $this->ytDlpBinary,
             '--no-playlist',
             '--no-progress',
+            '--write-info-json',
             '--merge-output-format',
             'mp4',
             '--max-filesize',
@@ -275,6 +275,66 @@ final class SocialVideoDownloader
         $command[] = $url;
 
         return $command;
+    }
+
+    private function findDownloadedVideoPath(string $workDir): ?string
+    {
+        $files = glob($workDir.'/*') ?: [];
+        $videoFiles = array_values(array_filter(
+            $files,
+            static fn (string $path): bool => is_file($path)
+                && !str_ends_with($path, '.part')
+                && !str_ends_with($path, '.info.json')
+                && !str_ends_with($path, '.description')
+                && !str_ends_with($path, '.jpg')
+                && !str_ends_with($path, '.webp'),
+        ));
+
+        if ($videoFiles === []) {
+            return null;
+        }
+
+        usort($videoFiles, static fn (string $a, string $b): int => filesize($b) <=> filesize($a));
+
+        return $videoFiles[0];
+    }
+
+    private function readCaptionFromInfoJson(string $workDir): ?string
+    {
+        $infoFiles = glob($workDir.'/*.info.json') ?: [];
+        if ($infoFiles === []) {
+            return null;
+        }
+
+        $raw = @file_get_contents($infoFiles[0]);
+        if ($raw === false || $raw === '') {
+            return null;
+        }
+
+        try {
+            /** @var array<string, mixed> $data */
+            $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        $caption = $this->normalizeCaption($data['description'] ?? null);
+        if ($caption !== null) {
+            return $caption;
+        }
+
+        return $this->normalizeCaption($data['title'] ?? null);
+    }
+
+    private function normalizeCaption(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $caption = trim($value);
+
+        return $caption === '' ? null : $caption;
     }
 
     private function humanizeError(string $output): string

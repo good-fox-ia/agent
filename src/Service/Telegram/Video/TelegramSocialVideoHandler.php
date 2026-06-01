@@ -17,6 +17,8 @@ final class TelegramSocialVideoHandler
 {
     private const RETRY_DELAY_SECONDS = 3;
 
+    private const TELEGRAM_CAPTION_MAX_LENGTH = 1024;
+
     /** TODO: тест sendVideo — постав true щоб слати test.mp4 замість yt-dlp */
     private const USE_HARDCODED_TEST_VIDEO = false;
 
@@ -51,16 +53,20 @@ final class TelegramSocialVideoHandler
         $storedInbound = $this->messages->findOneByTelegramMessageIds($telegramChatId, $triggerTelegramMessageId);
 
         $localPath = null;
+        $caption = null;
         $skipCleanup = false;
 
         try {
             $this->telegram->sendChatAction($telegramChatId, 'typing');
-            $localPath = $this->downloadWithRetry($url, $skipCleanup, $telegramChatId);
+            [$localPath, $caption] = $this->downloadWithRetry($url, $skipCleanup, $telegramChatId);
 
             $this->telegram->sendChatAction($telegramChatId, 'upload_video');
-            $sent = $this->telegram->sendVideo($telegramChatId, $localPath, [
-                'reply_to_message_id' => $triggerTelegramMessageId,
-            ]);
+            $videoOptions = ['reply_to_message_id' => $triggerTelegramMessageId];
+            if ($caption !== null && $caption !== '') {
+                $videoOptions['caption'] = $this->formatCaptionAsBlockquote($caption);
+                $videoOptions['parse_mode'] = 'HTML';
+            }
+            $sent = $this->telegram->sendVideo($telegramChatId, $localPath, $videoOptions);
             $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
         } catch (\Throwable $e) {
             $this->logger->error('Social video failed chat={chat} url={url}: {error}', [
@@ -91,7 +97,10 @@ final class TelegramSocialVideoHandler
         return true;
     }
 
-    private function downloadWithRetry(string $url, bool &$skipCleanup, int $chatId): string
+    /**
+     * @return array{0: string, 1: ?string} [path, caption]
+     */
+    private function downloadWithRetry(string $url, bool &$skipCleanup, int $chatId): array
     {
         $lastError = null;
         $heartbeat = fn (): mixed => $this->telegram->sendChatAction($chatId, 'typing');
@@ -110,10 +119,12 @@ final class TelegramSocialVideoHandler
                     }
                     $skipCleanup = true;
 
-                    return $path;
+                    return [$path, null];
                 }
 
-                return $this->downloader->download($url, $heartbeat);
+                $result = $this->downloader->download($url, $heartbeat);
+
+                return [$result->path, $result->caption];
             } catch (\Throwable $e) {
                 $lastError = $e;
             }
@@ -125,5 +136,17 @@ final class TelegramSocialVideoHandler
     private function testVideoPath(): string
     {
         return dirname(__DIR__, 4).'/test.mp4';
+    }
+
+    private function formatCaptionAsBlockquote(string $caption): string
+    {
+        $open = '<blockquote expandable>';
+        $close = '</blockquote>';
+        $maxPlain = self::TELEGRAM_CAPTION_MAX_LENGTH - strlen($open) - strlen($close);
+        if (mb_strlen($caption) > $maxPlain) {
+            $caption = mb_substr($caption, 0, $maxPlain - 1).'…';
+        }
+
+        return $open.htmlspecialchars($caption, ENT_QUOTES | ENT_HTML5, 'UTF-8').$close;
     }
 }
