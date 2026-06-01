@@ -1,4 +1,6 @@
-# Cookies для завантаження відео (yt-dlp)
+# Cookies для завантаження медіа (yt-dlp / gallery-dl)
+
+Відео — **yt-dlp**. Фото Instagram (`/p/` без відео) — **gallery-dl** (ті самі cookies у `instagram.txt`).
 
 Файли з cookies **не комітяться** (каталог `var/` у `.gitignore`).
 

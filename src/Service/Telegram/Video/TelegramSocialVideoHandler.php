@@ -11,13 +11,15 @@ use App\Service\Telegram\UI\UserMessageSender;
 use Psr\Log\LoggerInterface;
 
 /**
- * Завантажує соцмережеве відео за посиланням і надсилає його в Telegram-чат.
+ * Завантажує соцмережеве відео або фото за посиланням і надсилає в Telegram-чат.
  */
 final class TelegramSocialVideoHandler
 {
     private const RETRY_DELAY_SECONDS = 3;
 
     private const TELEGRAM_CAPTION_MAX_LENGTH = 1024;
+
+    private const TELEGRAM_MEDIA_GROUP_MAX = 10;
 
     /** TODO: тест sendVideo — постав true щоб слати test.mp4 замість yt-dlp */
     private const USE_HARDCODED_TEST_VIDEO = false;
@@ -53,23 +55,35 @@ final class TelegramSocialVideoHandler
         $storedInbound = $this->messages->findOneByTelegramMessageIds($telegramChatId, $triggerTelegramMessageId);
 
         $localPath = null;
-        $caption = null;
         $skipCleanup = false;
 
         try {
             $this->telegram->sendChatAction($telegramChatId, 'typing');
-            [$localPath, $caption] = $this->downloadWithRetry($url, $skipCleanup, $telegramChatId);
+            $result = $this->downloadWithRetry($url, $skipCleanup, $telegramChatId);
+            $localPath = $result->primaryPath();
 
-            $this->telegram->sendChatAction($telegramChatId, 'upload_video');
-            $videoOptions = ['reply_to_message_id' => $triggerTelegramMessageId];
-            if ($caption !== null && $caption !== '') {
-                $videoOptions['caption'] = $this->formatCaptionAsBlockquote($caption);
-                $videoOptions['parse_mode'] = 'HTML';
+            $sendOptions = ['reply_to_message_id' => $triggerTelegramMessageId];
+            if ($result->caption !== null && $result->caption !== '') {
+                $sendOptions['caption'] = $this->formatCaptionAsBlockquote($result->caption);
+                $sendOptions['parse_mode'] = 'HTML';
             }
-            $sent = $this->telegram->sendVideo($telegramChatId, $localPath, $videoOptions);
-            $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
+
+            if ($result->kind === SocialMediaKind::Photo) {
+                $this->telegram->sendChatAction($telegramChatId, 'upload_photo');
+                $photoPaths = array_slice($result->paths, 0, self::TELEGRAM_MEDIA_GROUP_MAX);
+                $sent = $this->telegram->sendMediaGroup($telegramChatId, $photoPaths, $sendOptions);
+            } else {
+                $this->telegram->sendChatAction($telegramChatId, 'upload_video');
+                $sent = $this->telegram->sendVideo($telegramChatId, $localPath, $sendOptions);
+            }
+
+            $this->persistence->recordAgentOutboundFromTelegramSend(
+                is_array($sent) && isset($sent[0]) ? $sent[0] : $sent,
+                $isGroup,
+                $storedInbound,
+            );
         } catch (\Throwable $e) {
-            $this->logger->error('Social video failed chat={chat} url={url}: {error}', [
+            $this->logger->error('Social media failed chat={chat} url={url}: {error}', [
                 'chat' => $telegramChatId,
                 'url' => $url,
                 'error' => $e->getMessage(),
@@ -78,7 +92,7 @@ final class TelegramSocialVideoHandler
             try {
                 $sent = $this->messageSender->send(
                     $telegramChatId,
-                    'Не вдалося завантажити відео.',
+                    'Не вдалося завантажити медіа.',
                     $isGroup,
                     [
                         'reply_to_message_id' => $triggerTelegramMessageId,
@@ -97,10 +111,7 @@ final class TelegramSocialVideoHandler
         return true;
     }
 
-    /**
-     * @return array{0: string, 1: ?string} [path, caption]
-     */
-    private function downloadWithRetry(string $url, bool &$skipCleanup, int $chatId): array
+    private function downloadWithRetry(string $url, bool &$skipCleanup, int $chatId): SocialVideoDownloadDTO
     {
         $lastError = null;
         $heartbeat = fn (): mixed => $this->telegram->sendChatAction($chatId, 'typing');
@@ -119,18 +130,16 @@ final class TelegramSocialVideoHandler
                     }
                     $skipCleanup = true;
 
-                    return [$path, null];
+                    return new SocialVideoDownloadDTO(SocialMediaKind::Video, [$path]);
                 }
 
-                $result = $this->downloader->download($url, $heartbeat);
-
-                return [$result->path, $result->caption];
+                return $this->downloader->download($url, $heartbeat);
             } catch (\Throwable $e) {
                 $lastError = $e;
             }
         }
 
-        throw $lastError ?? new \RuntimeException('Не вдалося завантажити відео.');
+        throw $lastError ?? new \RuntimeException('Не вдалося завантажити медіа.');
     }
 
     private function testVideoPath(): string

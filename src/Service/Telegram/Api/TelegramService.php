@@ -156,6 +156,89 @@ class TelegramService
         }
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
+    public function sendPhoto(string|int $chatId, string $photoPath, array $options = []): array
+    {
+        $handle = fopen($photoPath, 'rb');
+        if ($handle === false) {
+            throw new \RuntimeException('Не вдалося відкрити файл фото.');
+        }
+
+        try {
+            $body = array_merge(['chat_id' => $chatId, 'photo' => $handle], $options);
+            $decoded = $this->callApiMultipart('sendPhoto', $body);
+
+            return $decoded['result'] ?? $decoded;
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
+     * @param list<string>          $photoPaths
+     * @param array<string, mixed>  $options caption/parse_mode/reply_to_message_id
+     */
+    public function sendMediaGroup(string|int $chatId, array $photoPaths, array $options = []): array
+    {
+        if ($photoPaths === []) {
+            throw new \InvalidArgumentException('sendMediaGroup requires at least one photo.');
+        }
+
+        if (count($photoPaths) === 1) {
+            return $this->sendPhoto($chatId, $photoPaths[0], $options);
+        }
+
+        $handles = [];
+        $media = [];
+
+        try {
+            foreach ($photoPaths as $index => $photoPath) {
+                $handle = fopen($photoPath, 'rb');
+                if ($handle === false) {
+                    throw new \RuntimeException('Не вдалося відкрити файл фото.');
+                }
+                $handles[$index] = $handle;
+
+                $field = 'photo'.$index;
+                $item = [
+                    'type' => 'photo',
+                    'media' => 'attach://'.$field,
+                ];
+                if ($index === 0) {
+                    if (isset($options['caption'])) {
+                        $item['caption'] = $options['caption'];
+                    }
+                    if (isset($options['parse_mode'])) {
+                        $item['parse_mode'] = $options['parse_mode'];
+                    }
+                }
+                $media[] = $item;
+            }
+
+            $body = [
+                'chat_id' => $chatId,
+                'media' => json_encode($media, JSON_THROW_ON_ERROR),
+            ];
+            if (isset($options['reply_to_message_id'])) {
+                $body['reply_to_message_id'] = $options['reply_to_message_id'];
+            }
+
+            foreach ($handles as $index => $handle) {
+                $body['photo'.$index] = $handle;
+            }
+
+            $decoded = $this->callApiMultipart('sendMediaGroup', $body);
+
+            return $decoded['result'] ?? $decoded;
+        } finally {
+            foreach ($handles as $handle) {
+                fclose($handle);
+            }
+        }
+    }
+
     private function callApi(string $method, array $body): array
     {
         $this->assertToken();

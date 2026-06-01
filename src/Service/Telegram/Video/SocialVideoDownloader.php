@@ -7,11 +7,13 @@ namespace App\Service\Telegram\Video;
 use Symfony\Component\Process\Process;
 
 /**
- * Завантажує відео за URL через yt-dlp у тимчасову директорію.
- * Підпис під відео (description/caption) читається з .info.json, який yt-dlp пише поруч із файлом.
+ * Завантажує відео (yt-dlp) або фото Instagram (gallery-dl) у тимчасову директорію.
+ * Підпис читається з .info.json (yt-dlp) або .json поруч із файлом (gallery-dl).
  */
 final class SocialVideoDownloader
 {
+    private const GALLERY_DL_BINARY = '/usr/local/bin/gallery-dl';
+
     private const HEARTBEAT_INTERVAL_SECONDS = 4;
 
     /** TikTok / Instagram — найкращий mp4 без зайвого merge. */
@@ -62,21 +64,32 @@ final class SocialVideoDownloader
 
         try {
             $this->runDownloadAttempts($url, $outputTemplate, $heartbeat);
+
+            $videoPath = $this->findDownloadedVideoPath($workDir);
+            if ($videoPath === null) {
+                throw new \RuntimeException('Файл відео не знайдено після завантаження.');
+            }
+
+            return new SocialVideoDownloadDTO(
+                SocialMediaKind::Video,
+                [$videoPath],
+                $this->readCaptionFromInfoJson($workDir),
+            );
         } catch (\RuntimeException $e) {
-            $this->removeWorkDir($workDir);
-            throw $e;
-        }
+            if (!$this->shouldFallbackToPhotoDownload($url, $e)) {
+                $this->removeWorkDir($workDir);
+                throw $e;
+            }
 
-        $videoPath = $this->findDownloadedVideoPath($workDir);
-        if ($videoPath === null) {
-            $this->removeWorkDir($workDir);
-            throw new \RuntimeException('Файл відео не знайдено після завантаження.');
-        }
+            $this->clearWorkDir($workDir);
 
-        return new SocialVideoDownloadDTO(
-            $videoPath,
-            $this->readCaptionFromInfoJson($workDir),
-        );
+            try {
+                return $this->downloadInstagramPhotos($url, $workDir, $heartbeat);
+            } catch (\RuntimeException $photoError) {
+                $this->removeWorkDir($workDir);
+                throw $photoError;
+            }
+        }
     }
 
     public function removeDownloadedFile(string $path): void
@@ -204,6 +217,10 @@ final class SocialVideoDownloader
             }
         }
 
+        if ($this->isInstagramUrl($url) && $this->isNoVideoContent($combinedOutput)) {
+            throw new \RuntimeException($combinedOutput);
+        }
+
         throw new \RuntimeException($this->humanizeError($combinedOutput));
     }
 
@@ -275,6 +292,139 @@ final class SocialVideoDownloader
         $command[] = $url;
 
         return $command;
+    }
+
+    private function shouldFallbackToPhotoDownload(string $url, \RuntimeException $error): bool
+    {
+        return $this->isInstagramUrl($url) && $this->isNoVideoContent($error->getMessage());
+    }
+
+    private function isNoVideoContent(string $output): bool
+    {
+        return str_contains($output, 'No video formats found')
+            || str_contains($output, 'There is no video in this post')
+            || str_contains($output, 'У пості немає відео')
+            || str_contains($output, 'Файл відео не знайдено');
+    }
+
+    /**
+     * @param (callable(): void)|null $heartbeat
+     */
+    private function downloadInstagramPhotos(string $url, string $workDir, ?callable $heartbeat): SocialVideoDownloadDTO
+    {
+        if (!is_executable(self::GALLERY_DL_BINARY)) {
+            throw new \RuntimeException('gallery-dl не встановлено (потрібен для фото Instagram).');
+        }
+
+        $cookiesFile = $this->resolveCookiesFile($url);
+        $command = [self::GALLERY_DL_BINARY, '--write-metadata', '-d', $workDir];
+        if ($cookiesFile !== '' && is_readable($cookiesFile)) {
+            $command[] = '--cookies';
+            $command[] = $cookiesFile;
+        }
+        $command[] = $url;
+
+        $process = new Process($command);
+        $process->setTimeout(300);
+        $this->runProcess($process, $heartbeat);
+
+        if (!$process->isSuccessful()) {
+            throw new \RuntimeException($this->humanizeGalleryDlError(trim($process->getErrorOutput()."\n".$process->getOutput())));
+        }
+
+        $photoPaths = $this->findDownloadedPhotoPaths($workDir);
+        if ($photoPaths === []) {
+            throw new \RuntimeException('Файли фото не знайдено після завантаження.');
+        }
+
+        return new SocialVideoDownloadDTO(
+            SocialMediaKind::Photo,
+            $photoPaths,
+            $this->readCaptionFromGalleryDlMetadata($workDir),
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function findDownloadedPhotoPaths(string $workDir): array
+    {
+        $paths = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($workDir, \FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($iterator as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+
+            $path = $file->getPathname();
+            $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            if (!in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+                continue;
+            }
+
+            $paths[] = $path;
+        }
+
+        sort($paths, SORT_NATURAL);
+
+        return $paths;
+    }
+
+    private function readCaptionFromGalleryDlMetadata(string $workDir): ?string
+    {
+        $jsonFiles = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($workDir, \FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isFile() && str_ends_with($file->getPathname(), '.json')) {
+                $jsonFiles[] = $file->getPathname();
+            }
+        }
+
+        sort($jsonFiles, SORT_NATURAL);
+        if ($jsonFiles === []) {
+            return null;
+        }
+
+        $raw = @file_get_contents($jsonFiles[0]);
+        if ($raw === false || $raw === '') {
+            return null;
+        }
+
+        try {
+            /** @var array<string, mixed> $data */
+            $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        return $this->normalizeCaption($data['description'] ?? null);
+    }
+
+    private function humanizeGalleryDlError(string $output): string
+    {
+        if ($output === '') {
+            return 'gallery-dl завершився з помилкою.';
+        }
+
+        if (str_contains($output, 'login required') || str_contains($output, '401')) {
+            return 'Instagram вимагає cookies. Експортуйте cookies у var/cookies/instagram.txt.';
+        }
+
+        return mb_substr($output, 0, 500);
+    }
+
+    private function clearWorkDir(string $workDir): void
+    {
+        $this->removeWorkDir($workDir);
+        if (!mkdir($workDir, 0755, true) && !is_dir($workDir)) {
+            throw new \RuntimeException('Не вдалося очистити тимчасову директорію.');
+        }
     }
 
     private function findDownloadedVideoPath(string $workDir): ?string
@@ -355,12 +505,16 @@ final class SocialVideoDownloader
             return 'Сайт (часто TikTok) не повернув дані для завантаження — тимчасовий блок або зміна API. Спробуйте ще раз через хвилину або інше посилання.';
         }
 
+        if (str_contains($output, 'No video formats found') || str_contains($output, 'There is no video in this post')) {
+            return 'У пості немає відео (лише фото).';
+        }
+
         if (str_contains($output, '[Instagram]')) {
             if (str_contains($output, 'login required') || str_contains($output, 'rate-limit')) {
                 return 'Instagram вимагає cookies. Експортуйте cookies з браузера (Netscape) у var/cookies/instagram.txt.';
             }
 
-            return 'Не вдалося завантажити Instagram Reel.';
+            return 'Не вдалося завантажити з Instagram.';
         }
 
         $lines = array_values(array_filter(
@@ -381,11 +535,19 @@ final class SocialVideoDownloader
             return;
         }
 
-        foreach (glob($workDir.'/*') ?: [] as $file) {
-            if (is_file($file)) {
-                @unlink($file);
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($workDir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isDir()) {
+                @rmdir($file->getPathname());
+            } else {
+                @unlink($file->getPathname());
             }
         }
+
         @rmdir($workDir);
     }
 }

@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && docker-php-ext-enable redis mongodb amqp \
     && ldd "$(php-config --extension-dir)/mongodb.so" | grep -q libbsd \
     && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
-    && pip3 install --break-system-packages -U "yt-dlp[default]" curl_cffi \
+    && pip3 install --break-system-packages -U "yt-dlp[default]" gallery-dl curl_cffi \
     && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
     && rm -rf /var/lib/apt/lists/*
 
