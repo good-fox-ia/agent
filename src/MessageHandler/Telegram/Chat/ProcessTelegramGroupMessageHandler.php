@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\MessageHandler\Telegram\Chat;
 
+use App\Enum\MessageType;
 use App\Message\Telegram\Chat\ProcessTelegramGroupMessage;
 use App\Repository\MessageRepository;
 use App\Service\Telegram\Agent\TelegramAgentLlmReplySender;
@@ -40,6 +41,8 @@ final class ProcessTelegramGroupMessageHandler
         if ($text === '') return;
 
         $telegramMessage = $job->telegramMessage;
+        $shouldRespond = false;
+
         if (stripos($text, self::GROUP_BOT_MENTION) !== false) {
             $text = str_ireplace(self::GROUP_BOT_MENTION, self::GROUP_BOT_MENTION_REPLACEMENT, $text);
             $telegramMessage = TelegramMessageHelper::withVisibleTextBody($telegramMessage, $text);
@@ -52,7 +55,14 @@ final class ProcessTelegramGroupMessageHandler
             } catch (\Throwable $e) {
                 $this->logger->warning('Оновлення Message (згадка бота): {error}', ['error' => $e->getMessage()]);
             }
-        } elseif (!str_ends_with($text, '?')) return;
+            $shouldRespond = true;
+        } elseif ($this->isReplyToBotMessage($job->telegramChatId, $job->telegramMessage)) {
+            $shouldRespond = true;
+        }
+
+        if (!$shouldRespond) {
+            return;
+        }
 
         $this->agentLlmReplySender->sendLlmReplyForChat(
             $job->telegramChatId,
@@ -60,5 +70,26 @@ final class ProcessTelegramGroupMessageHandler
             $job->triggerTelegramMessageId,
             $telegramMessage,
         );
+    }
+
+    /**
+     * @param array<string, mixed> $telegramMessage
+     */
+    private function isReplyToBotMessage(int $telegramChatId, array $telegramMessage): bool
+    {
+        $replyTo = $telegramMessage['reply_to_message'] ?? null;
+        if (!is_array($replyTo) || !isset($replyTo['message_id'])) {
+            return false;
+        }
+
+        $repliedTo = $this->messages->findOneByTelegramMessageIds(
+            $telegramChatId,
+            (int) $replyTo['message_id'],
+        );
+        if ($repliedTo !== null) {
+            return $repliedTo->getType() === MessageType::AgentGroup;
+        }
+
+        return is_array($replyTo['from'] ?? null) && ($replyTo['from']['is_bot'] ?? false) === true;
     }
 }
