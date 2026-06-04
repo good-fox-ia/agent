@@ -30,7 +30,7 @@ final class TelegramAgentLlmReplySender
 {
     private const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
-    private const LLM_MAX_CONTEXT_MESSAGES = 20;
+    private const LLM_MAX_CONTEXT_MESSAGES = 100;
 
     /** Спроби відправки + повторна генерація після помилки Telegram HTML. */
     private const SEND_FIX_MAX_ATTEMPTS = 3;
@@ -361,6 +361,7 @@ PROMPT;
     private function buildChatMessagesForLlm(Chat $chat): array
     {
         $stored = $this->messages->findByLogicalChatOrderedForContext($chat, self::LLM_MAX_CONTEXT_MESSAGES);
+        $isGroupChat = $chat->getGroup() !== null;
 
         $messages = [];
         foreach ($stored as $doc) {
@@ -375,13 +376,46 @@ PROMPT;
             if ($role === 'assistant' && $this->inlineToolCallParser->looksLikeToolCall($t)) {
                 continue;
             }
+            $content = $t;
+            if ($isGroupChat && $role === 'user') {
+                $content = $this->prefixGroupUserMessageWithAuthor($doc, $t);
+            }
             $messages[] = [
                 'role' => $role,
-                'content' => $t,
+                'content' => $content,
             ];
         }
 
         return $messages;
+    }
+
+    private function prefixGroupUserMessageWithAuthor(\App\Document\Message $doc, string $text): string
+    {
+        $label = $this->formatGroupAuthorLabel($doc->getAuthor());
+        if ($label === null) {
+            return $text;
+        }
+
+        return $label . ': ' . $text;
+    }
+
+    private function formatGroupAuthorLabel(?User $author): ?string
+    {
+        if (!$author instanceof User) {
+            return null;
+        }
+
+        $username = $author->getUsername();
+        if ($username !== null && trim($username) !== '') {
+            return '@' . ltrim(trim($username), '@');
+        }
+
+        $name = trim(($author->getFirstName() ?? '') . ' ' . ($author->getLastName() ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        return null;
     }
 }
 
