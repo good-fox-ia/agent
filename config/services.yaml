@@ -8,6 +8,9 @@
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
     groq.chat_model: 'openai/gpt-oss-120b'
+    gemini.chat_model: 'gemini-2.0-flash'
+    llm.text_providers_default: 'groq'
+    llm.audio_providers_default: 'groq'
     telegram.social_video.yt_dlp_binary: '/usr/local/bin/yt-dlp'
     telegram.social_video.cookies_file: ''
 
@@ -24,9 +27,16 @@ services:
         exclude:
             - '../src/Service/LLM/Tool/TelegramBotCommandTool.php'
 
-    App\Service\LLM\LLMInterface: '@App\Service\LLM\Groq'
+    App\Service\LLM\Client\Interface\TextLLMInterface:
+        factory: ['@App\Service\LLM\Factory\LlmProviderFactory', 'createTextLlm']
 
-    App\Service\LLM\Adapter\PromptAdapterInterface: '@App\Service\LLM\Adapter\GroqPromptAdapter'
+    App\Service\LLM\Client\Interface\AudioTranscriptionLLMInterface:
+        factory: ['@App\Service\LLM\Factory\LlmProviderFactory', 'createAudioTranscriptionLlm']
+
+    App\Service\LLM\Factory\LlmProviderFactory:
+        arguments:
+            $textProvidersCsv: '%env(default:llm.text_providers_default:LLM_TEXT_PROVIDERS)%'
+            $audioProvidersCsv: '%env(default:llm.audio_providers_default:LLM_AUDIO_PROVIDERS)%'
 
     _instanceof:
         App\Service\LLM\Tool\ToolInterface:
@@ -134,10 +144,17 @@ services:
             $description: 'Run the /addfriend bot command: add a user to the friends list by Telegram username. The user must have messaged the bot at least once. Same as typing /addfriend @username in Telegram.'
             $usernameArgument: 'username'
 
-    App\Service\LLM\Groq:
+    App\Service\LLM\Client\Groq:
         arguments:
             $apiKey: '%env(GROQ_API_KEY)%'
+            $promptAdapter: '@App\Service\LLM\Adapter\GroqPromptAdapter'
             $defaultChatModel: '%env(default:groq.chat_model:GROQ_CHAT_MODEL)%'
+
+    App\Service\LLM\Client\Gemini:
+        arguments:
+            $apiKey: '%env(GEMINI_API_KEY)%'
+            $promptAdapter: '@App\Service\LLM\Adapter\GeminiPromptAdapter'
+            $defaultChatModel: '%env(default:gemini.chat_model:GEMINI_CHAT_MODEL)%'
 
     App\Service\Telegram\Api\TelegramService:
         arguments:

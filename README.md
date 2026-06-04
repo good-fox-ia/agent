@@ -9,7 +9,7 @@
 ## Перший запуск
 
 1. **Змінні середовища**  
-   Скопіюйте та налаштуйте `.env` / `.env.local` (секрети краще тримати в `.env.local`, він не має потрапляти в git). Мінімум для Telegram-бота та LLM зазвичай потрібні `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, а також `APP_SECRET` для Symfony.
+   Скопіюйте та налаштуйте `.env` / `.env.local` (секрети краще тримати в `.env.local`, він не має потрапляти в git). Мінімум для Telegram-бота: `TELEGRAM_BOT_TOKEN`, `APP_SECRET`, ключі LLM (`GROQ_API_KEY` / `GEMINI_API_KEY`) та `LLM_TEXT_PROVIDERS` / `LLM_AUDIO_PROVIDERS` (`groq`, `gemini` або ланцюжок `groq,gemini` для failover).
 
 2. **Запуск усього проєкту** (з кореня репозиторію):
 
@@ -52,7 +52,7 @@ docker compose logs -f messenger-worker
 
 ## Деплой на сервер (Ubuntu / production)
 
-1. Скопіюйте змінні: `cp .env.example .env.local` і заповніть секрети (`APP_SECRET`, `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, `MONGODB_DB`, `MONGODB_ROOT_*`, `RABBITMQ_*`).
+1. Скопіюйте змінні: `cp .env.example .env.local` і заповніть секрети (`APP_SECRET`, `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY` / `GEMINI_API_KEY`, `LLM_TEXT_PROVIDERS`, `LLM_AUDIO_PROVIDERS`, `MONGODB_DB`, `MONGODB_ROOT_*`, `RABBITMQ_*`).
 2. Запуск / оновлення (git pull, build, composer prod, cache, воркери):
 
    ```bash

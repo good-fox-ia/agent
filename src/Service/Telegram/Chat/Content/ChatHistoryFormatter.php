@@ -8,7 +8,7 @@ use App\Document\Chat;
 use App\Document\Message;
 use App\Enum\MessageType;
 use App\Repository\MessageRepository;
-use App\Service\LLM\InlineToolCallParser;
+use App\Service\LLM\Parser\InlineToolCallParser;
 
 /**
  * Форматує повну переписку логічної бесіди для надсилання в Telegram (з розбиттям на частини).

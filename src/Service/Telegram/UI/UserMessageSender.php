@@ -63,14 +63,14 @@ final class UserMessageSender
     {
         $text = $caption !== null && $caption !== '' ? $caption."\n".$url : $url;
 
-        $options = [
+        $options = $this->buildOptions([
             'link_preview_options' => [
                 'is_disabled' => false,
                 'url' => $url,
                 'prefer_large_media' => true,
                 'show_above_text' => true,
             ],
-        ];
+        ]);
 
         if (!$isGroup) {
             $user = $this->users->findOneByTelegramUserId($chatId);

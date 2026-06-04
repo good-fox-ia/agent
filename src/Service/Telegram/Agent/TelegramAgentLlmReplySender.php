@@ -11,8 +11,8 @@ use App\Enum\MessageType;
 use App\Repository\GroupRepository;
 use App\Repository\MessageRepository;
 use App\Service\LLM\DTO\PromptDTO;
-use App\Service\LLM\InlineToolCallParser;
-use App\Service\LLM\LLMInterface;
+use App\Service\LLM\Client\Interface\TextLLMInterface;
+use App\Service\LLM\Parser\InlineToolCallParser;
 use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Chat\Content\ChatTitleGenerator;
 use App\Service\Telegram\Context\TelegramLlmInvocationContext;
@@ -33,13 +33,15 @@ final class TelegramAgentLlmReplySender
     private const LLM_SYSTEM_PROMPT = <<<'PROMPT'
 Ти корисний асистент. Відповідай українською, стисло та по суті.
 
+Повідомлення в Telegram надсилаються з parse_mode HTML. Оформлюй відповіді підтримуваними Telegram HTML-тегами: <b>, <i>, <u>, <s>, <code>, <pre>, <a href="URL">, <tg-spoiler>. Не використовуй Markdown (*, _, `, ```). Символи &, <, > поза тегами екрануй як &amp;, &lt;, &gt;.
+
 Якщо користувач просить те саме, що роблять команди бота (/start, /help, /newchat, /keyboardon, /keyboardoff, /listchats, /friends, /addfriend, /edit_system_promt), виклич відповідний інструмент telegram_command_* замість імітації команди текстом. Після виконання такого інструменту не дублюй автоматичні повідомлення бота — коротко підтвердь або промовчи, якщо відповідь вже надіслана.
 PROMPT;
 
     public function __construct(
         private readonly TelegramService $telegram,
         private readonly UserMessageSender $messageSender,
-        private readonly LLMInterface $llm,
+        private readonly TextLLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly GroupRepository $groups,
         private readonly ActiveChatService $activeChat,

@@ -8,7 +8,7 @@ use App\Message\Telegram\Chat\ProcessTelegramGroupMessage;
 use App\Message\Telegram\Chat\ProcessTelegramPrivateMessage;
 use App\Message\Telegram\Content\ProcessTelegramAudioMessage;
 use App\Repository\MessageRepository;
-use App\Service\LLM\LLMInterface;
+use App\Service\LLM\Client\Interface\AudioTranscriptionLLMInterface;
 use App\Service\Telegram\Api\TelegramMessageHelper;
 use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
@@ -23,7 +23,7 @@ final class ProcessTelegramAudioMessageHandler
     public function __construct(
         private readonly TelegramService $telegram,
         private readonly UserMessageSender $messageSender,
-        private readonly LLMInterface $llm,
+        private readonly AudioTranscriptionLLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly TelegramPersistenceService $persistence,
         private readonly MessageBusInterface $bus,

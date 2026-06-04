@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Service\LLM;
+namespace App\Service\LLM\Parser;
 
 /**
  * Деякі моделі (напр. gpt-oss на Groq) повертають виклик тулза JSON у content замість tool_calls.

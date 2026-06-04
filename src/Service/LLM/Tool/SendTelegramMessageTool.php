@@ -38,7 +38,7 @@ final class SendTelegramMessageTool implements ToolInterface
             'type' => 'function',
             'function' => [
                 'name' => $this->getName()->value,
-                'description' => 'Send a private Telegram message to a user by their @username. The user must have previously messaged the bot. Username may be passed with or without @.',
+                'description' => 'Send a private Telegram message to a user by their @username. The user must have previously messaged the bot. Username may be passed with or without @. Message text is sent with Telegram HTML parse_mode; use supported HTML tags (<b>, <i>, <code>, <a href="...">, etc.), not Markdown.',
                 'parameters' => [
                     'type' => 'object',
                     'properties' => [
@@ -48,7 +48,7 @@ final class SendTelegramMessageTool implements ToolInterface
                         ],
                         'message' => [
                             'type' => 'string',
-                            'description' => 'Text of the message to send.',
+                            'description' => 'Text of the message to send (Telegram HTML: <b>, <i>, <code>, <a href="...">, etc.).',
                         ],
                     ],
                     'required' => ['username', 'message'],

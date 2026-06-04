@@ -2,14 +2,18 @@
 
 declare(strict_types=1);
 
-namespace App\Service\LLM;
+namespace App\Service\LLM\Client;
 
 use App\Service\Http\Client;
+use App\Service\LLM\AbstractLLM;
 use App\Service\LLM\Adapter\PromptAdapterInterface;
 use App\Service\LLM\DTO\PromptDTO;
+use App\Service\LLM\Client\Interface\AudioTranscriptionLLMInterface;
+use App\Service\LLM\Client\Interface\TextLLMInterface;
+use App\Service\LLM\Parser\InlineToolCallParser;
 use App\Service\LLM\Tool\ToolRegistry;
 
-class Groq extends AbstractLLM
+class Groq extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLLMInterface
 {
     private const COMPLETE_URL = 'https://api.groq.com/openai/v1/chat/completions';
 

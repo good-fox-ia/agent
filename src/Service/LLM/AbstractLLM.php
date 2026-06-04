@@ -5,7 +5,7 @@ namespace App\Service\LLM;
 use App\Service\Http\Client;
 use App\Service\LLM\Adapter\PromptAdapterInterface;
 
-abstract class AbstractLLM implements LLMInterface
+abstract class AbstractLLM
 {
     public function __construct(
         protected readonly string $apiKey,

@@ -8,8 +8,8 @@ use App\Document\Chat;
 use App\Enum\MessageType;
 use App\Repository\MessageRepository;
 use App\Service\LLM\DTO\PromptDTO;
-use App\Service\LLM\InlineToolCallParser;
-use App\Service\LLM\LLMInterface;
+use App\Service\LLM\Client\Interface\TextLLMInterface;
+use App\Service\LLM\Parser\InlineToolCallParser;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Psr\Log\LoggerInterface;
 
@@ -29,7 +29,7 @@ final class ChatTitleGenerator
 PROMPT;
 
     public function __construct(
-        private readonly LLMInterface $llm,
+        private readonly TextLLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly InlineToolCallParser $inlineToolCallParser,
         private readonly DocumentManager $documentManager,
