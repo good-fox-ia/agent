@@ -30,7 +30,7 @@ final class TelegramAgentLlmReplySender
 {
     private const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
-    private const LLM_MAX_CONTEXT_MESSAGES = 100;
+    private const LLM_MAX_CONTEXT_MESSAGES = 1000;
 
     /** Спроби відправки + повторна генерація після помилки Telegram HTML. */
     private const SEND_FIX_MAX_ATTEMPTS = 3;
