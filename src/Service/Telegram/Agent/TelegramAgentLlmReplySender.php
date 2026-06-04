@@ -10,9 +10,11 @@ use App\Document\User;
 use App\Enum\MessageType;
 use App\Repository\GroupRepository;
 use App\Repository\MessageRepository;
+use App\Enum\ToolName;
 use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\Client\Interface\TextLLMInterface;
 use App\Service\LLM\Parser\InlineToolCallParser;
+use App\Service\LLM\Tool\ToolRegistry;
 use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Chat\Content\ChatTitleGenerator;
 use App\Service\Telegram\Context\TelegramLlmInvocationContext;
@@ -30,12 +32,26 @@ final class TelegramAgentLlmReplySender
 
     private const LLM_MAX_CONTEXT_MESSAGES = 20;
 
+    /** Спроби відправки + повторна генерація після помилки Telegram HTML. */
+    private const SEND_FIX_MAX_ATTEMPTS = 3;
+
     private const LLM_SYSTEM_PROMPT = <<<'PROMPT'
 Ти корисний асистент. Відповідай українською, стисло та по суті.
 
-Повідомлення в Telegram надсилаються з parse_mode HTML. Оформлюй відповіді підтримуваними Telegram HTML-тегами: <b>, <i>, <u>, <s>, <code>, <pre>, <a href="URL">, <tg-spoiler>. Не використовуй Markdown (*, _, `, ```). Символи &, <, > поза тегами екрануй як &amp;, &lt;, &gt;.
+Інструменти (function calling):
+- Викликай лише інструменти з переліку «Дозволені інструменти» нижче. Жодних інших імен.
+- Заборонено вигадувати тулзи: code, python, run, execute, shell, interpreter, calculator, search тощо.
+- Код, формули, алгоритми — лише текстом у відповіді; виконання коду недоступне.
+- Не виводь у тексті JSON/об’єкти виклику тулза ({ "name": "...", "parameters": ... }) — або офіційний tool_calls API, або звичайна відповідь користувачу.
 
-Якщо користувач просить те саме, що роблять команди бота (/start, /help, /newchat, /keyboardon, /keyboardoff, /listchats, /friends, /addfriend, /edit_system_promt), виклич відповідний інструмент telegram_command_* замість імітації команди текстом. Після виконання такого інструменту не дублюй автоматичні повідомлення бота — коротко підтвердь або промовчи, якщо відповідь вже надіслана.
+HTML для Telegram (parse_mode HTML):
+- Дозволені теги: <b>, <i>, <u>, <s>, <code>, <pre>, <a href="URL">, <tg-spoiler>.
+- Кожен відкритий тег закрий парним: <b>…</b>, <code>…</code>, <pre>…</pre>. Незакриті теги ламають відправку.
+- Перед відправкою перевір, що кількість відкривних і закривних тегів збігається для кожного типу.
+- Код у <code>одним рядком</code> або багаторядковий у <pre>…</pre>; не змішуй незакриті фрагменти.
+- Не використовуй Markdown (*, _, `, ```). Символи &, <, > поза тегами — &amp;, &lt;, &gt; (наприклад «a &lt; b»).
+
+Команди бота: якщо користувач просить те саме, що /start, /help, /newchat, /keyboardon, /keyboardoff, /listchats, /friends, /addfriend, /edit_system_promt — виклич відповідний telegram_command_* замість імітації текстом. Після такого інструменту не дублюй автоматичні повідомлення бота.
 PROMPT;
 
     public function __construct(
@@ -48,6 +64,7 @@ PROMPT;
         private readonly TelegramPersistenceService $persistence,
         private readonly TelegramLlmInvocationContext $invocationContext,
         private readonly InlineToolCallParser $inlineToolCallParser,
+        private readonly ToolRegistry $toolRegistry,
         private readonly ChatTitleGenerator $chatTitleGenerator,
         private readonly LoggerInterface $logger,
     ) {}
@@ -89,7 +106,36 @@ PROMPT;
 
         $this->invocationContext->begin($contextMessage, $replyToInbound);
         try {
-            $answer = $this->llm->complete($this->buildPromptDtoForChat($logicalChat));
+            $this->completeAndSendLlmReply($logicalChat, $telegramChatId, $isGroup, $replyToInbound);
+        } catch (\Throwable $e) {
+            $this->logger->error('Помилка LLM/sendMessage chat={chat}: {error}', [
+                'chat' => $telegramChatId,
+                'error' => $e->getMessage(),
+            ], $e);
+        } finally {
+            $this->invocationContext->clear();
+        }
+    }
+
+    private function completeAndSendLlmReply(
+        Chat $logicalChat,
+        int $telegramChatId,
+        bool $isGroup,
+        ?\App\Document\Message $replyToInbound,
+    ): void {
+        $basePrompt = $this->buildPromptDtoForChat($logicalChat);
+        /** @var list<array{role: string, content: string}> $retryMessages */
+        $retryMessages = [];
+
+        for ($attempt = 1; $attempt <= self::SEND_FIX_MAX_ATTEMPTS; $attempt++) {
+            $prompt = $retryMessages === []
+                ? $basePrompt
+                : new PromptDTO(
+                    messages: [...$basePrompt->getMessages(), ...$retryMessages],
+                    systemPrompt: $basePrompt->getSystemPrompt(),
+                );
+
+            $answer = $this->llm->complete($prompt);
             if ($this->inlineToolCallParser->looksLikeToolCall($answer)) {
                 $this->logger->warning('LLM повернув сирий виклик тулза замість тексту, пропускаємо відправку chat={chat}', [
                     'chat' => $telegramChatId,
@@ -101,21 +147,69 @@ PROMPT;
             if ($answer === '') {
                 return;
             }
-            $sent = $this->messageSender->send($telegramChatId, $answer, $isGroup);
+
+            try {
+                $sent = $this->messageSender->send($telegramChatId, $answer, $isGroup);
+            } catch (\Throwable $e) {
+                if (!$this->isRetriableTelegramSendError($e) || $attempt >= self::SEND_FIX_MAX_ATTEMPTS) {
+                    throw $e;
+                }
+                $this->logger->warning(
+                    'Telegram відхилив HTML, повторний запит до LLM chat={chat} attempt={attempt}: {error}',
+                    [
+                        'chat' => $telegramChatId,
+                        'attempt' => $attempt,
+                        'error' => $e->getMessage(),
+                    ],
+                );
+                $retryMessages = [
+                    ['role' => 'assistant', 'content' => $answer],
+                    ['role' => 'user', 'content' => $this->buildSendFailureCorrectionPrompt($e)],
+                ];
+
+                continue;
+            }
+
             $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound, $logicalChat);
 
             if (!$isGroup) {
                 $this->chatTitleGenerator->updateTitleIfNeeded($logicalChat);
             }
             $this->logger->info('Відповідь агента надіслано в chat {chat}', ['chat' => $telegramChatId]);
-        } catch (\Throwable $e) {
-            $this->logger->error('Помилка LLM/sendMessage chat={chat}: {error}', [
-                'chat' => $telegramChatId,
-                'error' => $e->getMessage(),
-            ], $e);
-        } finally {
-            $this->invocationContext->clear();
+
+            return;
         }
+    }
+
+    private function buildSendFailureCorrectionPrompt(\Throwable $e): string
+    {
+        $detail = $this->extractTelegramErrorDescription($e->getMessage());
+
+        return 'Telegram API відхилив попередню відповідь (parse_mode HTML): '
+            . $detail
+            . "\n\nВиправ розмітку (закрий усі HTML-теги, екрануй &, <, > поза тегами) і надішли лише виправлений текст відповіді користувачу — без пояснень про помилку.";
+    }
+
+    private function extractTelegramErrorDescription(string $message): string
+    {
+        if (preg_match('/"description":"((?:[^"\\\\]|\\\\.)*)"/', $message, $matches) === 1) {
+            return stripcslashes($matches[1]);
+        }
+
+        return $message;
+    }
+
+    private function isRetriableTelegramSendError(\Throwable $e): bool
+    {
+        if ($e->getCode() !== 400) {
+            return false;
+        }
+
+        $message = $e->getMessage();
+
+        return str_contains($message, "can't parse entities")
+            || str_contains($message, 'parse entities')
+            || str_contains($message, 'unsupported start tag');
     }
 
     /**
@@ -196,6 +290,7 @@ PROMPT;
     {
         $custom = $chat->getSystemPrompt();
         $base = self::LLM_SYSTEM_PROMPT
+            . $this->buildAllowedToolsSuffix()
             . $this->buildFriendsContextSuffix($chat);
 
         if ($custom === null || trim($custom) === '') {
@@ -205,6 +300,19 @@ PROMPT;
         return $base
             . "\n\nДодаткові інструкції для цієї бесіди:\n"
             . trim($custom);
+    }
+
+    private function buildAllowedToolsSuffix(): string
+    {
+        $names = array_map(
+            static fn (ToolName $name): string => $name->value,
+            $this->toolRegistry->getAllNames(),
+        );
+        sort($names);
+
+        return "\n\nДозволені інструменти: "
+            . implode(', ', $names)
+            . '.';
     }
 
     private function buildFriendsContextSuffix(Chat $chat): string
