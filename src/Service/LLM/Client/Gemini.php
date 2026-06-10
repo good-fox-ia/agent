@@ -9,11 +9,12 @@ use App\Service\LLM\AbstractLLM;
 use App\Service\LLM\Adapter\PromptAdapterInterface;
 use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\Client\Interface\AudioTranscriptionLLMInterface;
+use App\Service\LLM\Client\Interface\ImageDescriptionLLMInterface;
 use App\Service\LLM\Client\Interface\TextLLMInterface;
 use App\Service\LLM\Parser\InlineToolCallParser;
 use App\Service\LLM\Tool\ToolRegistry;
 
-class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLLMInterface
+class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLLMInterface, ImageDescriptionLLMInterface
 {
     private const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -88,6 +89,38 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
         $text = $this->extractTextFromResponse($decoded);
         if ($text === '') {
             throw new \RuntimeException('Gemini transcription response has no text.');
+        }
+
+        return trim($text);
+    }
+
+    public function describeImage(string $imageBinary, string $mimeType, string $prompt, array $options = []): string
+    {
+        if ($this->apiKey === '') {
+            throw new \InvalidArgumentException('GEMINI_API_KEY is empty');
+        }
+
+        $model = $options['model'] ?? $this->defaultChatModel;
+
+        $body = [
+            'contents' => [[
+                'role' => 'user',
+                'parts' => [
+                    [
+                        'inlineData' => [
+                            'mimeType' => $mimeType,
+                            'data' => base64_encode($imageBinary),
+                        ],
+                    ],
+                    ['text' => $prompt],
+                ],
+            ]],
+        ];
+
+        $decoded = $this->post($this->buildUrl($model), $body, $this->getHeaders());
+        $text = $this->extractTextFromResponse($decoded);
+        if ($text === '') {
+            throw new \RuntimeException('Gemini image description response has no text.');
         }
 
         return trim($text);

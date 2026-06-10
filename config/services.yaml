@@ -11,6 +11,8 @@ parameters:
     gemini.chat_model: 'gemini-2.0-flash'
     llm.text_providers_default: 'groq'
     llm.audio_providers_default: 'groq'
+    llm.image_providers_default: 'gemini,groq'
+    groq.vision_model: 'meta-llama/llama-4-maverick-17b-128e-instruct'
     telegram.social_video.yt_dlp_binary: '/usr/local/bin/yt-dlp'
     telegram.social_video.cookies_file: ''
 
@@ -33,10 +35,14 @@ services:
     App\Service\LLM\Client\Interface\AudioTranscriptionLLMInterface:
         factory: ['@App\Service\LLM\Factory\LlmProviderFactory', 'createAudioTranscriptionLlm']
 
+    App\Service\LLM\Client\Interface\ImageDescriptionLLMInterface:
+        factory: ['@App\Service\LLM\Factory\LlmProviderFactory', 'createImageDescriptionLlm']
+
     App\Service\LLM\Factory\LlmProviderFactory:
         arguments:
             $textProvidersCsv: '%env(default:llm.text_providers_default:LLM_TEXT_PROVIDERS)%'
             $audioProvidersCsv: '%env(default:llm.audio_providers_default:LLM_AUDIO_PROVIDERS)%'
+            $imageProvidersCsv: '%env(default:llm.image_providers_default:LLM_IMAGE_PROVIDERS)%'
 
     _instanceof:
         App\Service\LLM\Tool\ToolInterface:
@@ -149,6 +155,7 @@ services:
             $apiKey: '%env(GROQ_API_KEY)%'
             $promptAdapter: '@App\Service\LLM\Adapter\GroqPromptAdapter'
             $defaultChatModel: '%env(default:groq.chat_model:GROQ_CHAT_MODEL)%'
+            $defaultVisionModel: '%env(default:groq.vision_model:GROQ_VISION_MODEL)%'
 
     App\Service\LLM\Client\Gemini:
         arguments:
@@ -170,6 +177,10 @@ services:
     App\Service\Telegram\Video\ThreadsPostDownloader:
         arguments:
             $downloadDir: '%kernel.cache_dir%/social_video'
+
+    App\Service\Telegram\Media\TelegramMediaStorage:
+        arguments:
+            $storageDir: '%kernel.project_dir%/var/telegram_media'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

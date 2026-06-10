@@ -49,6 +49,10 @@ final class Message
     #[Field(type: 'string', nullable: true)]
     private ?string $text = null;
 
+    /** Локальний шлях до завантаженого файлу (фото/відео/документ), якщо він збережений на сервері. */
+    #[Field(type: 'string', nullable: true)]
+    private ?string $filePath = null;
+
     #[Field(type: 'date_immutable')]
     private \DateTimeImmutable $createdAt;
 
@@ -148,6 +152,18 @@ final class Message
     public function setText(?string $text): self
     {
         $this->text = $text;
+
+        return $this->touchUpdatedAt();
+    }
+
+    public function getFilePath(): ?string
+    {
+        return $this->filePath;
+    }
+
+    public function setFilePath(?string $filePath): self
+    {
+        $this->filePath = $filePath;
 
         return $this->touchUpdatedAt();
     }

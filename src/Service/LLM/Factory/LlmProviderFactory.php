@@ -7,8 +7,10 @@ namespace App\Service\LLM\Factory;
 use App\Service\LLM\Client\Gemini;
 use App\Service\LLM\Client\Groq;
 use App\Service\LLM\Failover\AudioTranscriptionFailoverProvider;
+use App\Service\LLM\Failover\ImageDescriptionFailoverProvider;
 use App\Service\LLM\Failover\TextFailoverProvider;
 use App\Service\LLM\Client\Interface\AudioTranscriptionLLMInterface;
+use App\Service\LLM\Client\Interface\ImageDescriptionLLMInterface;
 use App\Service\LLM\Client\Interface\TextLLMInterface;
 use Psr\Log\LoggerInterface;
 
@@ -20,15 +22,20 @@ final class LlmProviderFactory
     /** @var list<string> */
     private readonly array $audioProviderNames;
 
+    /** @var list<string> */
+    private readonly array $imageProviderNames;
+
     public function __construct(
         private readonly Groq $groq,
         private readonly Gemini $gemini,
         private readonly string $textProvidersCsv,
         private readonly string $audioProvidersCsv,
+        private readonly string $imageProvidersCsv = '',
         private readonly ?LoggerInterface $logger = null,
     ) {
         $this->textProviderNames = self::parseProviderNames($textProvidersCsv);
         $this->audioProviderNames = self::parseProviderNames($audioProvidersCsv);
+        $this->imageProviderNames = self::parseProviderNames($imageProvidersCsv);
     }
 
     public function createTextLlm(): TextLLMInterface
@@ -43,6 +50,14 @@ final class LlmProviderFactory
     {
         return new AudioTranscriptionFailoverProvider(
             $this->buildProviderList($this->audioProviderNames),
+            $this->logger,
+        );
+    }
+
+    public function createImageDescriptionLlm(): ImageDescriptionLLMInterface
+    {
+        return new ImageDescriptionFailoverProvider(
+            $this->buildProviderList($this->imageProviderNames),
             $this->logger,
         );
     }

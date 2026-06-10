@@ -28,6 +28,7 @@ services:
       - telegram_inbound
       - telegram_messages
       - telegram_audio
+      - telegram_media
       - telegram_message_private
       - telegram_message_group
 

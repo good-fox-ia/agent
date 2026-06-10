@@ -9,11 +9,12 @@ use App\Service\LLM\AbstractLLM;
 use App\Service\LLM\Adapter\PromptAdapterInterface;
 use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\Client\Interface\AudioTranscriptionLLMInterface;
+use App\Service\LLM\Client\Interface\ImageDescriptionLLMInterface;
 use App\Service\LLM\Client\Interface\TextLLMInterface;
 use App\Service\LLM\Parser\InlineToolCallParser;
 use App\Service\LLM\Tool\ToolRegistry;
 
-class Groq extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLLMInterface
+class Groq extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLLMInterface, ImageDescriptionLLMInterface
 {
     private const COMPLETE_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
@@ -21,6 +22,9 @@ class Groq extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLL
 
     /** @see https://console.groq.com/docs/tool-use/local-tool-calling */
     private const DEFAULT_CHAT_MODEL = 'openai/gpt-oss-120b';
+
+    /** @see https://console.groq.com/docs/vision */
+    private const DEFAULT_VISION_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
 
     private const MAX_TOOL_ITERATIONS = 5;
 
@@ -31,6 +35,7 @@ class Groq extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLL
         private readonly ToolRegistry $toolRegistry,
         private readonly InlineToolCallParser $inlineToolCallParser,
         private readonly string $defaultChatModel = self::DEFAULT_CHAT_MODEL,
+        private readonly string $defaultVisionModel = self::DEFAULT_VISION_MODEL,
     ) {
         parent::__construct($apiKey, $httpClient, $promptAdapter);
     }
@@ -97,6 +102,37 @@ class Groq extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLL
         if (!is_string($text)) throw new \RuntimeException('Groq transcription response has no text field.');
 
         return trim($text);
+    }
+
+    public function describeImage(string $imageBinary, string $mimeType, string $prompt, array $options = []): string
+    {
+        if ($this->apiKey === '') throw new \InvalidArgumentException('GROQ_API_KEY is empty');
+
+        $model = $options['model'] ?? $this->defaultVisionModel;
+
+        $body = [
+            'model' => $model,
+            'messages' => [[
+                'role' => 'user',
+                'content' => [
+                    ['type' => 'text', 'text' => $prompt],
+                    [
+                        'type' => 'image_url',
+                        'image_url' => [
+                            'url' => sprintf('data:%s;base64,%s', $mimeType, base64_encode($imageBinary)),
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+
+        $decoded = $this->post(self::COMPLETE_URL, $body, $this->getHeaders());
+        $message = $this->extractAssistantMessage($decoded);
+
+        $content = isset($message['content']) && is_string($message['content']) ? trim($message['content']) : '';
+        if ($content === '') throw new \RuntimeException('Groq image description response has no content.');
+
+        return $content;
     }
 
     private function sendPrompt(array $body): string

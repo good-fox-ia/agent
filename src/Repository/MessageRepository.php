@@ -138,6 +138,16 @@ final class MessageRepository extends ServiceDocumentRepository
         $this->getDocumentManager()->flush();
     }
 
+    public function saveInboundFilePath(int $telegramChatId, int $telegramMessageId, string $filePath): void
+    {
+        $msg = $this->findOneByTelegramMessageIds($telegramChatId, $telegramMessageId);
+        if ($msg === null) {
+            return;
+        }
+        $msg->setFilePath($filePath);
+        $this->getDocumentManager()->flush();
+    }
+
     /**
      * @param array<string, mixed> $sent об'єкт повідомлення з відповіді sendMessage
      */

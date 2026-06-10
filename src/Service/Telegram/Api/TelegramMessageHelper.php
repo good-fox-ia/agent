@@ -36,6 +36,51 @@ final class TelegramMessageHelper
         return '';
     }
 
+    public static function hasMediaAttachment(array $telegramMessage): bool
+    {
+        return self::resolveMediaAttachment($telegramMessage) !== null;
+    }
+
+    /**
+     * Фото / відео / документ у повідомленні: тип, file_id, розмір і назва файлу (якщо відомі).
+     *
+     * @param array<string, mixed> $telegramMessage
+     *
+     * @return array{type: string, file_id: string, file_size: int|null, file_name: string|null}|null
+     */
+    public static function resolveMediaAttachment(array $telegramMessage): ?array
+    {
+        $photo = $telegramMessage['photo'] ?? null;
+        if (is_array($photo) && $photo !== []) {
+            // Telegram надсилає масив розмірів; останній — найбільший
+            $largest = $photo[array_key_last($photo)];
+            if (is_array($largest) && isset($largest['file_id'])) {
+                return [
+                    'type' => 'photo',
+                    'file_id' => (string) $largest['file_id'],
+                    'file_size' => isset($largest['file_size']) ? (int) $largest['file_size'] : null,
+                    'file_name' => null,
+                ];
+            }
+        }
+
+        foreach (['video', 'document', 'animation', 'video_note'] as $key) {
+            $media = $telegramMessage[$key] ?? null;
+            if (is_array($media) && isset($media['file_id'])) {
+                $fileName = $media['file_name'] ?? null;
+
+                return [
+                    'type' => $key,
+                    'file_id' => (string) $media['file_id'],
+                    'file_size' => isset($media['file_size']) ? (int) $media['file_size'] : null,
+                    'file_name' => is_string($fileName) && $fileName !== '' ? basename($fileName) : null,
+                ];
+            }
+        }
+
+        return null;
+    }
+
     /**
      * @param array<string, mixed> $telegramMessage
      *

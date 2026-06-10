@@ -30,6 +30,15 @@ framework:
                     queues:
                         telegram_audio: ~
 
+            telegram_media:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    exchange:
+                        name: telegram_media
+                        type: fanout
+                    queues:
+                        telegram_media: ~
+
             telegram_message_private:
                 dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
                 options:
@@ -54,5 +63,6 @@ framework:
             App\Message\Telegram\ProcessTelegramCallback: sync
             App\Message\Telegram\Content\ProcessTelegramTextMessage: telegram_messages
             App\Message\Telegram\Content\ProcessTelegramAudioMessage: telegram_audio
+            App\Message\Telegram\Content\ProcessTelegramMediaMessage: telegram_media
             App\Message\Telegram\Chat\ProcessTelegramPrivateMessage: telegram_message_private
             App\Message\Telegram\Chat\ProcessTelegramGroupMessage: telegram_message_group
