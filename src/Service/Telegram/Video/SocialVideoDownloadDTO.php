@@ -6,6 +6,7 @@ namespace App\Service\Telegram\Video;
 
 /**
  * Результат завантаження: локальні файли медіа та опційний підпис з соцмережі.
+ * Для kind=Text медіа немає — лише текст поста у caption.
  */
 final readonly class SocialVideoDownloadDTO
 {
@@ -17,13 +18,13 @@ final readonly class SocialVideoDownloadDTO
         public array $paths,
         public ?string $caption = null,
     ) {
-        if ($paths === []) {
+        if ($paths === [] && $kind !== SocialMediaKind::Text) {
             throw new \InvalidArgumentException('SocialVideoDownloadDTO requires at least one media path.');
         }
     }
 
-    public function primaryPath(): string
+    public function primaryPath(): ?string
     {
-        return $this->paths[0];
+        return $this->paths[0] ?? null;
     }
 }

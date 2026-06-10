@@ -167,5 +167,9 @@ services:
             $cookiesFile: '%env(default:telegram.social_video.cookies_file:SOCIAL_VIDEO_COOKIES_FILE)%'
             $projectDir: '%kernel.project_dir%'
 
+    App\Service\Telegram\Video\ThreadsPostDownloader:
+        arguments:
+            $downloadDir: '%kernel.cache_dir%/social_video'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

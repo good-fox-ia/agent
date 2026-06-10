@@ -8,4 +8,5 @@ enum SocialMediaKind
 {
     case Video;
     case Photo;
+    case Text;
 }

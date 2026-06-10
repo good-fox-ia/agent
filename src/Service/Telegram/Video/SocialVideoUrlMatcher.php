@@ -7,7 +7,7 @@ namespace App\Service\Telegram\Video;
 use App\Service\Telegram\Api\TelegramMessageHelper;
 
 /**
- * Визначає посилання на відео TikTok, Instagram Reels або YouTube Shorts у тексті повідомлення.
+ * Визначає посилання на відео TikTok, Instagram Reels, YouTube Shorts або пости Threads у тексті повідомлення.
  */
 final class SocialVideoUrlMatcher
 {
@@ -32,7 +32,7 @@ final class SocialVideoUrlMatcher
             return null;
         }
 
-        if (!preg_match_all('#(?:https?://)?(?:www\.)?(?:[a-z0-9-]+\.)*(?:tiktok\.com|instagram\.com|youtube\.com)[^\s<>"\'\)\]]*#i', $text, $matches)) {
+        if (!preg_match_all('#(?:https?://)?(?:www\.)?(?:[a-z0-9-]+\.)*(?:tiktok\.com|instagram\.com|youtube\.com|threads\.(?:com|net))[^\s<>"\'\)\]]*#i', $text, $matches)) {
             return null;
         }
 
@@ -90,6 +90,11 @@ final class SocialVideoUrlMatcher
         }
 
         if (str_contains($host, 'youtube.com') && str_contains($path, '/shorts/')) {
+            return true;
+        }
+
+        if ((str_contains($host, 'threads.com') || str_contains($host, 'threads.net'))
+            && (str_contains($path, '/post/') || str_starts_with($path, '/t/'))) {
             return true;
         }
 

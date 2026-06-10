@@ -11,13 +11,15 @@ use App\Service\Telegram\UI\UserMessageSender;
 use Psr\Log\LoggerInterface;
 
 /**
- * Завантажує соцмережеве відео або фото за посиланням і надсилає в Telegram-чат.
+ * Завантажує соцмережеве відео, фото або текст поста за посиланням і надсилає в Telegram-чат.
  */
 final class TelegramSocialVideoHandler
 {
     private const RETRY_DELAY_SECONDS = 3;
 
     private const TELEGRAM_CAPTION_MAX_LENGTH = 1024;
+
+    private const TELEGRAM_TEXT_MAX_LENGTH = 4096;
 
     private const TELEGRAM_MEDIA_GROUP_MAX = 10;
 
@@ -27,6 +29,7 @@ final class TelegramSocialVideoHandler
     public function __construct(
         private readonly SocialVideoUrlMatcher $urlMatcher,
         private readonly SocialVideoDownloader $downloader,
+        private readonly ThreadsPostDownloader $threadsDownloader,
         private readonly TelegramService $telegram,
         private readonly UserMessageSender $messageSender,
         private readonly MessageRepository $messages,
@@ -68,13 +71,23 @@ final class TelegramSocialVideoHandler
                 $sendOptions['parse_mode'] = 'HTML';
             }
 
-            if ($result->kind === SocialMediaKind::Photo) {
+            if ($result->kind === SocialMediaKind::Text) {
+                $sent = $this->messageSender->send(
+                    $telegramChatId,
+                    $this->formatCaptionAsBlockquote((string) $result->caption, self::TELEGRAM_TEXT_MAX_LENGTH),
+                    $isGroup,
+                    [
+                        'reply_to_message_id' => $triggerTelegramMessageId,
+                        'link_preview_options' => ['is_disabled' => true],
+                    ],
+                );
+            } elseif ($result->kind === SocialMediaKind::Photo) {
                 $this->telegram->sendChatAction($telegramChatId, 'upload_photo');
                 $photoPaths = array_slice($result->paths, 0, self::TELEGRAM_MEDIA_GROUP_MAX);
                 $sent = $this->telegram->sendMediaGroup($telegramChatId, $photoPaths, $sendOptions);
             } else {
                 $this->telegram->sendChatAction($telegramChatId, 'upload_video');
-                $sent = $this->telegram->sendVideo($telegramChatId, $localPath, $sendOptions);
+                $sent = $this->telegram->sendVideo($telegramChatId, (string) $localPath, $sendOptions);
             }
 
             $this->persistence->recordAgentOutboundFromTelegramSend(
@@ -104,7 +117,11 @@ final class TelegramSocialVideoHandler
             }
         } finally {
             if ($localPath !== null && !$skipCleanup) {
-                $this->downloader->removeDownloadedFile($localPath);
+                if ($this->threadsDownloader->supports($url)) {
+                    $this->threadsDownloader->removeDownloadedFile($localPath);
+                } else {
+                    $this->downloader->removeDownloadedFile($localPath);
+                }
             }
         }
 
@@ -133,6 +150,10 @@ final class TelegramSocialVideoHandler
                     return new SocialVideoDownloadDTO(SocialMediaKind::Video, [$path]);
                 }
 
+                if ($this->threadsDownloader->supports($url)) {
+                    return $this->threadsDownloader->download($url, $heartbeat);
+                }
+
                 return $this->downloader->download($url, $heartbeat);
             } catch (\Throwable $e) {
                 $lastError = $e;
@@ -147,11 +168,11 @@ final class TelegramSocialVideoHandler
         return dirname(__DIR__, 4).'/test.mp4';
     }
 
-    private function formatCaptionAsBlockquote(string $caption): string
+    private function formatCaptionAsBlockquote(string $caption, int $maxLength = self::TELEGRAM_CAPTION_MAX_LENGTH): string
     {
         $open = '<blockquote expandable>';
         $close = '</blockquote>';
-        $maxPlain = self::TELEGRAM_CAPTION_MAX_LENGTH - strlen($open) - strlen($close);
+        $maxPlain = $maxLength - strlen($open) - strlen($close);
         if (mb_strlen($caption) > $maxPlain) {
             $caption = mb_substr($caption, 0, $maxPlain - 1).'…';
         }
