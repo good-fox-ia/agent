@@ -8,6 +8,11 @@ enum ToolName: string
 {
     case GET_WEATHER = 'get_weather';
     case GET_CURRENT_TIME = 'get_current_time';
+    case FETCH_WEB_PAGE = 'fetch_web_page';
+    case WEB_SEARCH = 'web_search';
+    case DESCRIBE_IMAGE = 'describe_image';
+    case DO_NOTHING = 'do_nothing';
+    case ASK_USER_QUESTION = 'ask_user_question';
     case SEND_TELEGRAM_MESSAGE = 'send_telegram_message';
     case TELEGRAM_COMMAND_START = 'telegram_command_start';
     case TELEGRAM_COMMAND_HELP = 'telegram_command_help';

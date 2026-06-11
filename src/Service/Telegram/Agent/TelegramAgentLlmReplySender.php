@@ -42,9 +42,12 @@ final class TelegramAgentLlmReplySender
 
 Інструменти (function calling):
 - Викликай лише інструменти з переліку «Дозволені інструменти» нижче. Жодних інших імен.
-- Заборонено вигадувати тулзи: code, python, run, execute, shell, interpreter, calculator, search тощо.
+- Заборонено вигадувати тулзи: code, python, run, execute, shell, interpreter, calculator тощо.
 - Код, формули, алгоритми — лише текстом у відповіді; виконання коду недоступне.
 - Не виводь у тексті JSON/об’єкти виклику тулза ({ "name": "...", "parameters": ... }) — або офіційний tool_calls API, або звичайна відповідь користувачу.
+- web_search — пошук в інтернеті (свіжа інформація, новини, факти); fetch_web_page — вміст сторінки за URL; describe_image — опис зображення за шляхом до файла.
+- do_nothing — виклич, коли відповідати в чат не потрібно; після нього не пиши жодного тексту.
+- ask_user_question — коли потрібна відповідь користувача з варіантами: передай питання і 2–10 варіантів, бот покаже кнопки. Після виклику не пиши жодного тексту — питання і є відповіддю.
 
 HTML для Telegram (parse_mode HTML):
 - Дозволені теги: <b>, <i>, <u>, <s>, <code>, <pre>, <a href="URL">, <tg-spoiler>.
@@ -140,6 +143,13 @@ PROMPT;
                 );
 
             $answer = $this->llm->complete($prompt);
+            if ($this->invocationContext->isReplySuppressed()) {
+                $this->logger->info('Тулз попросив пропустити відповідь, нічого не надсилаємо chat={chat}', [
+                    'chat' => $telegramChatId,
+                ]);
+
+                return;
+            }
             if ($this->inlineToolCallParser->looksLikeToolCall($answer)) {
                 $this->logger->warning('LLM повернув сирий виклик тулза замість тексту, пропускаємо відправку chat={chat}', [
                     'chat' => $telegramChatId,

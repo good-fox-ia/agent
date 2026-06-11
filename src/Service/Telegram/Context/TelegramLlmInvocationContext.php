@@ -16,6 +16,9 @@ final class TelegramLlmInvocationContext
 
     private ?Message $inbound = null;
 
+    /** Тулз попросив не надсилати фінальну текстову відповідь LLM у чат. */
+    private bool $replySuppressed = false;
+
     /**
      * @param array<string, mixed> $telegramMessage
      */
@@ -23,12 +26,24 @@ final class TelegramLlmInvocationContext
     {
         $this->telegramMessage = $telegramMessage;
         $this->inbound = $inbound;
+        $this->replySuppressed = false;
     }
 
     public function clear(): void
     {
         $this->telegramMessage = null;
         $this->inbound = null;
+        $this->replySuppressed = false;
+    }
+
+    public function suppressReply(): void
+    {
+        $this->replySuppressed = true;
+    }
+
+    public function isReplySuppressed(): bool
+    {
+        return $this->replySuppressed;
     }
 
     public function isActive(): bool

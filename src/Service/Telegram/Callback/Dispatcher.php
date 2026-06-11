@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Telegram\Callback;
 
+use App\Service\Telegram\Callback\Handler\AskQuestionAnswerProcessor;
 use App\Service\Telegram\Callback\Handler\HistoryProcessor;
 use App\Service\Telegram\Callback\Handler\SelectChatProcessor;
 use App\Service\Telegram\Callback\Handler\SelectVoiceProcessor;
@@ -16,6 +17,7 @@ final class Dispatcher
         private readonly SelectChatProcessor $selectChat,
         private readonly HistoryProcessor $history,
         private readonly SelectVoiceProcessor $selectVoice,
+        private readonly AskQuestionAnswerProcessor $askQuestionAnswer,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -38,6 +40,13 @@ final class Dispatcher
         if ($this->history->handles($callback->data)) {
             $this->logger->info('Telegram callback: show history data={data}', ['data' => $callback->data]);
             $this->history->process($callback);
+
+            return;
+        }
+
+        if ($this->askQuestionAnswer->handles($callback->data)) {
+            $this->logger->info('Telegram callback: question answer data={data}', ['data' => $callback->data]);
+            $this->askQuestionAnswer->process($callback);
 
             return;
         }

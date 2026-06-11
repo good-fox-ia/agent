@@ -359,7 +359,7 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
 
             $contents[] = [
                 'role' => 'model',
-                'parts' => $parts,
+                'parts' => $this->normalizeFunctionCallParts($parts),
             ];
 
             $responseParts = [];
@@ -377,9 +377,32 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
     }
 
     /**
+     * Порожні args ({} у відповіді Gemini) PHP декодує в порожній масив, який json_encode
+     * серіалізує назад як список []. Proto-схема Gemini вимагає об'єкт — підміняємо на stdClass.
+     *
+     * @param list<array<string, mixed>> $parts
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeFunctionCallParts(array $parts): array
+    {
+        foreach ($parts as $i => $part) {
+            if (!isset($part['functionCall']) || !is_array($part['functionCall'])) {
+                continue;
+            }
+            $args = $part['functionCall']['args'] ?? null;
+            if ($args === null || $args === []) {
+                $parts[$i]['functionCall']['args'] = new \stdClass();
+            }
+        }
+
+        return $parts;
+    }
+
+    /**
      * @param array<string, mixed> $functionCall
      *
-     * @return array{functionResponse: array{name: string, response: array<string, mixed>}}
+     * @return array{functionResponse: array{name: string, response: array<string, mixed>|\stdClass}}
      */
     private function buildFunctionResponsePart(array $functionCall): array
     {
@@ -407,7 +430,7 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
         return [
             'functionResponse' => [
                 'name' => $name,
-                'response' => $response,
+                'response' => $response === [] ? new \stdClass() : $response,
             ],
         ];
     }
