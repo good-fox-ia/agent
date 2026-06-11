@@ -53,7 +53,7 @@ HTML для Telegram (parse_mode HTML):
 - Код у <code>одним рядком</code> або багаторядковий у <pre>…</pre>; не змішуй незакриті фрагменти.
 - Не використовуй Markdown (*, _, `, ```). Символи &, <, > поза тегами — &amp;, &lt;, &gt; (наприклад «a &lt; b»).
 
-Команди бота: якщо користувач просить те саме, що /start, /help, /newchat, /keyboardon, /keyboardoff, /voiceon, /voiceoff, /listchats, /friends, /addfriend, /edit_system_promt — виклич відповідний telegram_command_* замість імітації текстом. Після такого інструменту не дублюй автоматичні повідомлення бота.
+Команди бота: якщо користувач просить те саме, що /start, /help, /newchat, /keyboardon, /keyboardoff, /voiceon, /voiceoff, /voice, /listchats, /friends, /addfriend, /edit_system_promt — виклич відповідний telegram_command_* замість імітації текстом. Після такого інструменту не дублюй автоматичні повідомлення бота.
 PROMPT;
 
     public function __construct(
@@ -206,7 +206,7 @@ PROMPT;
         }
 
         try {
-            $sent = $this->voiceReplySender->sendVoiceReply($telegramChatId, $answer);
+            $sent = $this->voiceReplySender->sendVoiceReply($telegramChatId, $answer, voice: $user->getTtsVoice());
         } catch (\Throwable $e) {
             $this->logger->warning('Не вдалося надіслати голосову відповідь chat={chat}, fallback на текст: {error}', [
                 'chat' => $telegramChatId,

@@ -10,7 +10,8 @@ parameters:
     groq.chat_model: 'openai/gpt-oss-120b'
     gemini.chat_model: 'gemini-2.0-flash'
     gemini.image_model: 'gemini-2.5-flash-image'
-    gemini.tts_model: 'gemini-2.5-flash-preview-tts'
+    # TTS-моделі в порядку failover (помилка/квота — наступна)
+    gemini.tts_models: 'gemini-2.5-flash-preview-tts,gemini-3.1-flash-tts-preview'
     openrouter.image_model: 'google/gemini-2.5-flash-image'
     cloudflare.image_model: '@cf/black-forest-labs/flux-2-klein-4b'
     llm.text_providers_default: 'groq'
@@ -144,6 +145,16 @@ services:
             $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_VOICE_OFF
             $description: 'Run the /voiceoff bot command: disable voice (TTS) replies for this user — the bot will answer with text again. Use when the user wants text answers or voice replies turned off — same as typing /voiceoff.'
 
+    App\Service\LLM\Tool\TelegramBotCommandTool.voice:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::VOICE
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_VOICE
+            $description: 'Run the /voice bot command: show an inline keyboard to pick the TTS voice for spoken replies. Use when the user wants to change or choose the voice the bot speaks with — same as typing /voice.'
+
     App\Service\LLM\Tool\TelegramBotCommandTool.list_chats:
         class: App\Service\LLM\Tool\TelegramBotCommandTool
         autowire: true
@@ -198,7 +209,7 @@ services:
             $promptAdapter: '@App\Service\LLM\Adapter\GeminiPromptAdapter'
             $defaultChatModel: '%env(default:gemini.chat_model:GEMINI_CHAT_MODEL)%'
             $defaultImageModel: '%env(default:gemini.image_model:GEMINI_IMAGE_MODEL)%'
-            $defaultTtsModel: '%env(default:gemini.tts_model:GEMINI_TTS_MODEL)%'
+            $ttsModelsCsv: '%env(default:gemini.tts_models:GEMINI_TTS_MODELS)%'
 
     App\Service\LLM\Client\OpenRouter:
         arguments:

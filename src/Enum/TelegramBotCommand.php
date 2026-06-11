@@ -13,6 +13,7 @@ enum TelegramBotCommand: string
     case KEYBOARD_OFF = 'keyboardoff';
     case VOICE_ON = 'voiceon';
     case VOICE_OFF = 'voiceoff';
+    case VOICE = 'voice';
     case LIST_CHATS = 'listchats';
     case EDIT_SYSTEM_PROMPT = 'edit_system_promt';
     case FRIENDS = 'friends';
@@ -34,6 +35,7 @@ enum TelegramBotCommand: string
             self::KEYBOARD_OFF => 'Вимкнути клавіатуру внизу',
             self::VOICE_ON => 'Увімкнути відповіді голосом',
             self::VOICE_OFF => 'Вимкнути відповіді голосом',
+            self::VOICE => 'Обрати голос озвучки',
             self::LIST_CHATS => 'Список збережених бесід',
             self::EDIT_SYSTEM_PROMPT => 'System prompt активної бесіди',
             self::FRIENDS => 'Список друзів',
@@ -54,6 +56,7 @@ enum TelegramBotCommand: string
             self::NEW_CHAT => $scope === TelegramBotCommandScope::PRIVATE,
             self::VOICE_ON => true,
             self::VOICE_OFF => true,
+            self::VOICE => true,
             self::EDIT_SYSTEM_PROMPT => true,
         };
     }

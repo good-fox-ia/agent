@@ -26,7 +26,8 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
 
     private const DEFAULT_IMAGE_MODEL = 'gemini-2.5-flash-image';
 
-    private const DEFAULT_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+    /** Моделі TTS у порядку спроб: помилка (квота/перевантаження) — пробуємо наступну. */
+    private const DEFAULT_TTS_MODELS = 'gemini-2.5-flash-preview-tts,gemini-3.1-flash-tts-preview';
 
     private const DEFAULT_TTS_VOICE = 'Kore';
 
@@ -40,7 +41,7 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
         private readonly InlineToolCallParser $inlineToolCallParser,
         private readonly string $defaultChatModel = self::DEFAULT_CHAT_MODEL,
         private readonly string $defaultImageModel = self::DEFAULT_IMAGE_MODEL,
-        private readonly string $defaultTtsModel = self::DEFAULT_TTS_MODEL,
+        private readonly string $ttsModelsCsv = self::DEFAULT_TTS_MODELS,
     ) {
         parent::__construct($apiKey, $httpClient, $promptAdapter);
     }
@@ -200,11 +201,28 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
             throw new \InvalidArgumentException('Text for audio generation is empty.');
         }
 
-        $model = $options['model'] ?? $this->defaultTtsModel;
         $voice = is_string($options['voice'] ?? null) && $options['voice'] !== ''
             ? $options['voice']
             : self::DEFAULT_TTS_VOICE;
 
+        $models = isset($options['model']) && is_string($options['model']) && $options['model'] !== ''
+            ? [$options['model']]
+            : $this->ttsModels();
+
+        $lastException = null;
+        foreach ($models as $model) {
+            try {
+                return $this->requestTtsAudio($model, $text, $voice);
+            } catch (\Throwable $e) {
+                $lastException = $e;
+            }
+        }
+
+        throw $lastException ?? new \RuntimeException('No Gemini TTS models configured.');
+    }
+
+    private function requestTtsAudio(string $model, string $text, string $voice): GeneratedAudioDTO
+    {
         $body = [
             'contents' => [[
                 'role' => 'user',
@@ -239,6 +257,22 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
         }
 
         throw new \RuntimeException('Gemini audio generation response has no audio.');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function ttsModels(): array
+    {
+        $models = [];
+        foreach (explode(',', $this->ttsModelsCsv) as $part) {
+            $model = trim($part);
+            if ($model !== '' && !in_array($model, $models, true)) {
+                $models[] = $model;
+            }
+        }
+
+        return $models;
     }
 
     /**

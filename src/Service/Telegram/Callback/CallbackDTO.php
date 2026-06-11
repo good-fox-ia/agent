@@ -11,6 +11,7 @@ final readonly class CallbackDTO
         public int $chatId,
         public string $callbackId,
         public string $data,
+        public int $messageId,
     ) {}
 
     public static function buildFromArray(array $callbackQuery): ?self
@@ -19,9 +20,10 @@ final readonly class CallbackDTO
         $chatId = ((int) $callbackQuery['message']['chat']['id']) ?? null;
         $callbackId = ((string) $callbackQuery['id']) ?? null;
         $data = ((string) $callbackQuery['data']) ?? null;
+        $messageId = (int) ($callbackQuery['message']['message_id'] ?? 0);
 
         if (!isset($fromId) || !isset($chatId) || !isset($callbackId) || !isset($data)) return null;
 
-        return new self($fromId, $chatId, $callbackId, $data);
+        return new self($fromId, $chatId, $callbackId, $data, $messageId);
     }
 }

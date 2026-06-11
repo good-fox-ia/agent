@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Telegram\Voice;
 
+use App\Enum\TtsVoice;
 use App\Service\LLM\Client\Interface\AudioGenerationLLMInterface;
 use App\Service\Telegram\Api\TelegramService;
 use Symfony\Component\Process\Process;
@@ -31,7 +32,7 @@ final class VoiceReplySender
      *
      * @return array<string, mixed> sent message payload з Telegram API
      */
-    public function sendVoiceReply(int $chatId, string $text, array $options = []): array
+    public function sendVoiceReply(int $chatId, string $text, array $options = [], ?TtsVoice $voice = null): array
     {
         $plainText = $this->toPlainText($text);
         if ($plainText === '') {
@@ -39,7 +40,8 @@ final class VoiceReplySender
         }
 
         $this->sendChatActionSafely($chatId, 'record_voice');
-        $audio = $this->tts->generateAudio($plainText);
+        // Без обраного голосу провайдер використає свій дефолт (константа в клієнті).
+        $audio = $this->tts->generateAudio($plainText, $voice !== null ? ['voice' => $voice->value] : []);
 
         $oggPath = $this->convertToOggOpus($audio->binary);
 

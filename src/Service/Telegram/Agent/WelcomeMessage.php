@@ -90,6 +90,7 @@ final class WelcomeMessage
 ➕ <code>/addfriend @нік</code> — додати друга за нікнеймом.
 ⌨️ <code>/keyboardon</code> та <code>/keyboardoff</code> — увімкнути або вимкнути кнопки внизу екрана.
 🔊 <code>/voiceon</code> та <code>/voiceoff</code> — увімкнути або вимкнути відповіді голосом.
+🗣️ <code>/voice</code> — обрати голос озвучки.
 ⚙️ <code>/edit_system_promt</code> — змінити system prompt для активної бесіди (<code>reset</code> — скинути).
 TEXT;
     }

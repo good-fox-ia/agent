@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Document;
 
+use App\Enum\TtsVoice;
 use App\Repository\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -50,6 +51,9 @@ final class User
 
     #[Field(type: 'bool', nullable: true)]
     private ?bool $voiceReply = null;
+
+    #[Field(type: 'string', nullable: true)]
+    private ?string $ttsVoice = null;
 
     /** @var Collection<int, User> */
     #[ReferenceMany(targetDocument: self::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
@@ -168,6 +172,19 @@ final class User
     public function setVoiceReply(bool $voiceReply): self
     {
         $this->voiceReply = $voiceReply;
+        $this->touchUpdatedAt();
+
+        return $this;
+    }
+
+    public function getTtsVoice(): ?TtsVoice
+    {
+        return $this->ttsVoice !== null ? TtsVoice::tryFrom($this->ttsVoice) : null;
+    }
+
+    public function setTtsVoice(?TtsVoice $voice): self
+    {
+        $this->ttsVoice = $voice?->value;
         $this->touchUpdatedAt();
 
         return $this;
