@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\MessageHandler\Telegram\Content;
 
+use App\Document\Message;
 use App\Message\Telegram\Content\ProcessTelegramMediaMessage;
 use App\Repository\MessageRepository;
 use App\Service\LLM\Client\Interface\ImageDescriptionLLMInterface;
+use App\Service\LLM\Client\Interface\ImageGenerationLLMInterface;
 use App\Service\Telegram\Api\TelegramMessageHelper;
 use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Chat\GroupBotAddressChecker;
@@ -25,6 +27,7 @@ final class ProcessTelegramMediaMessageHandler
         private readonly TelegramMediaStorage $mediaStorage,
         private readonly MessageRepository $messages,
         private readonly ImageDescriptionLLMInterface $imageLlm,
+        private readonly ImageGenerationLLMInterface $imageGenLlm,
         private readonly UserMessageSender $messageSender,
         private readonly TelegramPersistenceService $persistence,
         private readonly GroupBotAddressChecker $botAddressChecker,
@@ -76,7 +79,12 @@ final class ProcessTelegramMediaMessageHandler
             ]);
 
             if ($attachment['type'] === 'photo') {
-                $this->describePhotoAndReply($payload, $telegramChatId, $telegramMessageId, $localPath);
+                $editPrompt = $this->resolveEditPrompt($payload);
+                if ($editPrompt !== null) {
+                    $this->editPhotoAndReply($payload, $telegramChatId, $telegramMessageId, $localPath, $editPrompt);
+                } else {
+                    $this->describePhotoAndReply($payload, $telegramChatId, $telegramMessageId, $localPath);
+                }
             }
         } catch (\Throwable $e) {
             $this->logger->error('Telegram media chat={chat}: {error}', [
@@ -84,6 +92,151 @@ final class ProcessTelegramMediaMessageHandler
                 'error' => $e->getMessage(),
             ], $e);
         }
+    }
+
+    /**
+     * Підпис до фото — це промпт для редагування зображення (якщо не порожній після зняття згадки бота).
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function resolveEditPrompt(array $payload): ?string
+    {
+        $caption = isset($payload['caption']) ? trim((string) $payload['caption']) : '';
+        if ($caption === '') {
+            return null;
+        }
+
+        $prompt = trim((string) str_ireplace(GroupBotAddressChecker::BOT_MENTION, '', $caption));
+
+        return $prompt !== '' ? $prompt : null;
+    }
+
+    /**
+     * Фото з підписом: якщо доступна генерація зображень — редагує фото за промптом і надсилає картинку;
+     * якщо генерація недоступна чи не вдалась — віддає картинку + підпис у vision LLM і відповідає текстом.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function editPhotoAndReply(array $payload, int $telegramChatId, int $telegramMessageId, string $localPath, string $prompt): void
+    {
+        $isGroup = TelegramMessageHelper::isGroup($payload);
+        if ($isGroup && !$this->botAddressChecker->isAddressedToBot($telegramChatId, $payload)) {
+            return;
+        }
+
+        $binary = file_get_contents($localPath);
+        if ($binary === false) {
+            throw new \RuntimeException(sprintf('Не вдалося прочитати файл "%s".', $localPath));
+        }
+
+        $mimeType = mime_content_type($localPath) ?: 'image/jpeg';
+        $storedInbound = $this->messages->findOneByTelegramMessageIds($telegramChatId, $telegramMessageId);
+
+        if ($this->imageGenLlm->isConfigured()) {
+            try {
+                $this->telegram->sendChatAction($telegramChatId, 'upload_photo');
+
+                $generated = $this->imageGenLlm->editImage($binary, $mimeType, $prompt);
+                $generatedPath = $this->saveGeneratedImage($localPath, $generated->binary, $generated->mimeType);
+
+                $sent = $this->telegram->sendPhoto($telegramChatId, $generatedPath, [
+                    'reply_to_message_id' => $telegramMessageId,
+                ]);
+                $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
+
+                $this->logger->info('Telegram media: відредаговане фото надіслано chat={chat} message={message} path={path}', [
+                    'chat' => $telegramChatId,
+                    'message' => $telegramMessageId,
+                    'path' => $generatedPath,
+                ]);
+
+                return;
+            } catch (\Throwable $e) {
+                $this->logger->warning('Telegram media: генерація фото не вдалась, відповідаємо текстом chat={chat}: {error}', [
+                    'chat' => $telegramChatId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $this->answerPhotoWithVision($payload, $telegramChatId, $telegramMessageId, $binary, $mimeType, $prompt, $isGroup, $storedInbound);
+    }
+
+    /**
+     * Фолбек: картинка + текст користувача у vision LLM, відповідь текстом у чат.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function answerPhotoWithVision(
+        array $payload,
+        int $telegramChatId,
+        int $telegramMessageId,
+        string $binary,
+        string $mimeType,
+        string $prompt,
+        bool $isGroup,
+        ?Message $storedInbound,
+    ): void {
+        if (!$this->imageLlm->isConfigured()) {
+            $this->logger->warning('Vision LLM не налаштований, обробку фото пропущено для chat {chat}', ['chat' => $telegramChatId]);
+
+            return;
+        }
+
+        try {
+            $this->telegram->sendChatAction($telegramChatId, 'typing');
+
+            $answer = trim($this->imageLlm->describeImage($binary, $mimeType, $prompt));
+            if ($answer === '') {
+                return;
+            }
+
+            $sent = $this->messageSender->send($telegramChatId, htmlspecialchars($answer, ENT_NOQUOTES), $isGroup, [
+                'reply_to_message_id' => $telegramMessageId,
+            ]);
+            $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
+
+            $this->logger->info('Telegram media: текстова відповідь по фото надіслана chat={chat} message={message}', [
+                'chat' => $telegramChatId,
+                'message' => $telegramMessageId,
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Telegram media: обробка фото chat={chat}: {error}', [
+                'chat' => $telegramChatId,
+                'error' => $e->getMessage(),
+            ], $e);
+
+            $sent = $this->messageSender->send($telegramChatId, 'Не вдалося обробити фото.', $isGroup, [
+                'reply_to_message_id' => $telegramMessageId,
+            ]);
+            $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $storedInbound);
+        }
+    }
+
+    /**
+     * Зберігає згенероване зображення поруч з оригіналом і повертає шлях до файлу.
+     */
+    private function saveGeneratedImage(string $originalPath, string $binary, string $mimeType): string
+    {
+        $extension = match (strtolower($mimeType)) {
+            'image/jpeg', 'image/jpg' => 'jpg',
+            'image/webp' => 'webp',
+            default => 'png',
+        };
+
+        $path = sprintf(
+            '%s/%s_edited_%d.%s',
+            dirname($originalPath),
+            pathinfo($originalPath, PATHINFO_FILENAME),
+            time(),
+            $extension,
+        );
+
+        if (file_put_contents($path, $binary) === false) {
+            throw new \RuntimeException(sprintf('Не вдалося записати файл "%s".', $path));
+        }
+
+        return $path;
     }
 
     /**

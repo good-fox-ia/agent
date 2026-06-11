@@ -10,6 +10,7 @@ use App\Document\User;
 use App\Enum\MessageType;
 use App\Repository\GroupRepository;
 use App\Repository\MessageRepository;
+use App\Repository\UserRepository;
 use App\Enum\ToolName;
 use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\Client\Interface\TextLLMInterface;
@@ -21,6 +22,7 @@ use App\Service\Telegram\Context\TelegramLlmInvocationContext;
 use App\Service\Telegram\Persistence\ActiveChatService;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
 use App\Service\Telegram\UI\UserMessageSender;
+use App\Service\Telegram\Voice\VoiceReplySender;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -51,7 +53,7 @@ HTML для Telegram (parse_mode HTML):
 - Код у <code>одним рядком</code> або багаторядковий у <pre>…</pre>; не змішуй незакриті фрагменти.
 - Не використовуй Markdown (*, _, `, ```). Символи &, <, > поза тегами — &amp;, &lt;, &gt; (наприклад «a &lt; b»).
 
-Команди бота: якщо користувач просить те саме, що /start, /help, /newchat, /keyboardon, /keyboardoff, /listchats, /friends, /addfriend, /edit_system_promt — виклич відповідний telegram_command_* замість імітації текстом. Після такого інструменту не дублюй автоматичні повідомлення бота.
+Команди бота: якщо користувач просить те саме, що /start, /help, /newchat, /keyboardon, /keyboardoff, /voiceon, /voiceoff, /listchats, /friends, /addfriend, /edit_system_promt — виклич відповідний telegram_command_* замість імітації текстом. Після такого інструменту не дублюй автоматичні повідомлення бота.
 PROMPT;
 
     public function __construct(
@@ -60,6 +62,8 @@ PROMPT;
         private readonly TextLLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly GroupRepository $groups,
+        private readonly UserRepository $users,
+        private readonly VoiceReplySender $voiceReplySender,
         private readonly ActiveChatService $activeChat,
         private readonly TelegramPersistenceService $persistence,
         private readonly TelegramLlmInvocationContext $invocationContext,
@@ -148,6 +152,10 @@ PROMPT;
                 return;
             }
 
+            if ($this->trySendVoiceReply($logicalChat, $telegramChatId, $isGroup, $replyToInbound, $answer)) {
+                return;
+            }
+
             try {
                 $sent = $this->messageSender->send($telegramChatId, $answer, $isGroup);
             } catch (\Throwable $e) {
@@ -179,6 +187,63 @@ PROMPT;
 
             return;
         }
+    }
+
+    /**
+     * Якщо в користувача увімкнено голосові відповіді — озвучує текст через TTS і надсилає voice message.
+     * Повертає true, коли голосову відповідь надіслано (текст уже не відправляємо).
+     */
+    private function trySendVoiceReply(
+        Chat $logicalChat,
+        int $telegramChatId,
+        bool $isGroup,
+        ?\App\Document\Message $replyToInbound,
+        string $answer,
+    ): bool {
+        $user = $this->resolveReplyRecipientUser($telegramChatId, $isGroup, $replyToInbound);
+        if ($user === null || !$user->isVoiceReplyEnabled() || !$this->voiceReplySender->isAvailable()) {
+            return false;
+        }
+
+        try {
+            $sent = $this->voiceReplySender->sendVoiceReply($telegramChatId, $answer);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Не вдалося надіслати голосову відповідь chat={chat}, fallback на текст: {error}', [
+                'chat' => $telegramChatId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        // Voice message не має поля text — зберігаємо текст відповіді, щоб не втратити контекст LLM.
+        $this->persistence->recordAgentOutboundFromTelegramSend($sent + ['text' => $answer], $isGroup, $replyToInbound, $logicalChat);
+
+        if (!$isGroup) {
+            $this->chatTitleGenerator->updateTitleIfNeeded($logicalChat);
+        }
+        $this->logger->info('Голосову відповідь агента надіслано в chat {chat}', ['chat' => $telegramChatId]);
+
+        return true;
+    }
+
+    /**
+     * Користувач, чиї налаштування голосу застосовуємо: автор тригер-повідомлення,
+     * а у приватному чаті — користувач за telegram chat id.
+     */
+    private function resolveReplyRecipientUser(
+        int $telegramChatId,
+        bool $isGroup,
+        ?\App\Document\Message $replyToInbound,
+    ): ?User {
+        $author = $replyToInbound?->getAuthor()
+            ?? $this->invocationContext->getInbound()?->getAuthor();
+
+        if ($author instanceof User) {
+            return $author;
+        }
+
+        return $isGroup ? null : $this->users->findOneByTelegramUserId($telegramChatId);
     }
 
     private function buildSendFailureCorrectionPrompt(\Throwable $e): string

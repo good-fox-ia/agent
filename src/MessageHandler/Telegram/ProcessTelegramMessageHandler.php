@@ -48,7 +48,10 @@ final class ProcessTelegramMessageHandler
             $this->logger->info('Telegram inbound: queued audio chat={chat}', ['chat' => (string) $chatId]);
         }
 
-        if (TelegramMessageHelper::visibleTextBody($message) !== '') {
+        // Підпис до фото — промпт для редагування зображення (медіа-пайплайн), а не текст для LLM
+        $isPhotoWithCaption = isset($message['photo'], $message['caption']);
+
+        if (!$isPhotoWithCaption && TelegramMessageHelper::visibleTextBody($message) !== '') {
             $this->bus->dispatch(new ProcessTelegramTextMessage($message));
             $this->logger->info('Telegram inbound: queued text chat={chat}', ['chat' => (string) $chatId]);
         }

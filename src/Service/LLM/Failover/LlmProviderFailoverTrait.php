@@ -60,10 +60,10 @@ trait LlmProviderFailoverTrait
             return;
         }
 
-        $logger->warning('LLM provider failed, trying next', [
+        $logger->warning('LLM provider {provider} failed for {operation}, trying next: {error}', [
             'provider' => $provider::class,
             'operation' => $operation,
-            'exception' => $e->getMessage(),
+            'error' => $e->getMessage(),
             'code' => $e->getCode(),
         ]);
     }

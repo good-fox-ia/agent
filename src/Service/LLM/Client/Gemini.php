@@ -7,18 +7,28 @@ namespace App\Service\LLM\Client;
 use App\Service\Http\Client;
 use App\Service\LLM\AbstractLLM;
 use App\Service\LLM\Adapter\PromptAdapterInterface;
+use App\Service\LLM\DTO\GeneratedAudioDTO;
+use App\Service\LLM\DTO\GeneratedImageDTO;
 use App\Service\LLM\DTO\PromptDTO;
+use App\Service\LLM\Client\Interface\AudioGenerationLLMInterface;
 use App\Service\LLM\Client\Interface\AudioTranscriptionLLMInterface;
 use App\Service\LLM\Client\Interface\ImageDescriptionLLMInterface;
+use App\Service\LLM\Client\Interface\ImageGenerationLLMInterface;
 use App\Service\LLM\Client\Interface\TextLLMInterface;
 use App\Service\LLM\Parser\InlineToolCallParser;
 use App\Service\LLM\Tool\ToolRegistry;
 
-class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLLMInterface, ImageDescriptionLLMInterface
+class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscriptionLLMInterface, ImageDescriptionLLMInterface, ImageGenerationLLMInterface, AudioGenerationLLMInterface
 {
     private const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
     private const DEFAULT_CHAT_MODEL = 'gemini-2.0-flash';
+
+    private const DEFAULT_IMAGE_MODEL = 'gemini-2.5-flash-image';
+
+    private const DEFAULT_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+
+    private const DEFAULT_TTS_VOICE = 'Kore';
 
     private const MAX_TOOL_ITERATIONS = 5;
 
@@ -29,6 +39,8 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
         private readonly ToolRegistry $toolRegistry,
         private readonly InlineToolCallParser $inlineToolCallParser,
         private readonly string $defaultChatModel = self::DEFAULT_CHAT_MODEL,
+        private readonly string $defaultImageModel = self::DEFAULT_IMAGE_MODEL,
+        private readonly string $defaultTtsModel = self::DEFAULT_TTS_MODEL,
     ) {
         parent::__construct($apiKey, $httpClient, $promptAdapter);
     }
@@ -124,6 +136,145 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
         }
 
         return trim($text);
+    }
+
+    public function editImage(string $imageBinary, string $mimeType, string $prompt, array $options = []): GeneratedImageDTO
+    {
+        if ($this->apiKey === '') {
+            throw new \InvalidArgumentException('GEMINI_API_KEY is empty');
+        }
+
+        $model = $options['model'] ?? $this->defaultImageModel;
+
+        $body = [
+            'contents' => [[
+                'role' => 'user',
+                'parts' => [
+                    [
+                        'inlineData' => [
+                            'mimeType' => $mimeType,
+                            'data' => base64_encode($imageBinary),
+                        ],
+                    ],
+                    ['text' => $prompt],
+                ],
+            ]],
+            'generationConfig' => [
+                'responseModalities' => ['TEXT', 'IMAGE'],
+            ],
+        ];
+
+        $decoded = $this->post($this->buildUrl($model), $body, $this->getHeaders());
+
+        foreach ($this->extractCandidateParts($decoded) as $part) {
+            $inlineData = $part['inlineData'] ?? null;
+            if (is_array($inlineData) && isset($inlineData['data'])) {
+                $binary = base64_decode((string) $inlineData['data'], true);
+                if ($binary === false || $binary === '') {
+                    throw new \RuntimeException('Gemini image generation returned invalid image data.');
+                }
+
+                return new GeneratedImageDTO(
+                    $binary,
+                    is_string($inlineData['mimeType'] ?? null) ? $inlineData['mimeType'] : 'image/png',
+                );
+            }
+        }
+
+        $text = $this->extractTextFromResponse($decoded);
+
+        throw new \RuntimeException(
+            $text !== ''
+                ? sprintf('Gemini image generation returned no image: %s', mb_substr($text, 0, 300))
+                : 'Gemini image generation response has no image.',
+        );
+    }
+
+    public function generateAudio(string $text, array $options = []): GeneratedAudioDTO
+    {
+        if ($this->apiKey === '') {
+            throw new \InvalidArgumentException('GEMINI_API_KEY is empty');
+        }
+
+        if (trim($text) === '') {
+            throw new \InvalidArgumentException('Text for audio generation is empty.');
+        }
+
+        $model = $options['model'] ?? $this->defaultTtsModel;
+        $voice = is_string($options['voice'] ?? null) && $options['voice'] !== ''
+            ? $options['voice']
+            : self::DEFAULT_TTS_VOICE;
+
+        $body = [
+            'contents' => [[
+                'role' => 'user',
+                'parts' => [
+                    ['text' => $text],
+                ],
+            ]],
+            'generationConfig' => [
+                'responseModalities' => ['AUDIO'],
+                'speechConfig' => [
+                    'voiceConfig' => [
+                        'prebuiltVoiceConfig' => ['voiceName' => $voice],
+                    ],
+                ],
+            ],
+        ];
+
+        $decoded = $this->post($this->buildUrl($model), $body, $this->getHeaders());
+
+        foreach ($this->extractCandidateParts($decoded) as $part) {
+            $inlineData = $part['inlineData'] ?? null;
+            if (is_array($inlineData) && isset($inlineData['data'])) {
+                $binary = base64_decode((string) $inlineData['data'], true);
+                if ($binary === false || $binary === '') {
+                    throw new \RuntimeException('Gemini audio generation returned invalid audio data.');
+                }
+
+                $mimeType = is_string($inlineData['mimeType'] ?? null) ? $inlineData['mimeType'] : 'audio/L16;codec=pcm;rate=24000';
+
+                return $this->wrapPcmInWavIfNeeded($binary, $mimeType);
+            }
+        }
+
+        throw new \RuntimeException('Gemini audio generation response has no audio.');
+    }
+
+    /**
+     * Gemini TTS повертає сирий PCM (audio/L16) — загортаємо у WAV-контейнер, щоб файл був придатний для відтворення.
+     */
+    private function wrapPcmInWavIfNeeded(string $binary, string $mimeType): GeneratedAudioDTO
+    {
+        if (stripos($mimeType, 'audio/l16') !== 0 && stripos($mimeType, 'pcm') === false) {
+            return new GeneratedAudioDTO($binary, $mimeType);
+        }
+
+        $sampleRate = 24000;
+        if (preg_match('/rate=(\d+)/', $mimeType, $matches) === 1) {
+            $sampleRate = (int) $matches[1];
+        }
+
+        $channels = 1;
+        $bitsPerSample = 16;
+        $byteRate = $sampleRate * $channels * intdiv($bitsPerSample, 8);
+        $blockAlign = $channels * intdiv($bitsPerSample, 8);
+        $dataSize = strlen($binary);
+
+        $header = 'RIFF'
+            .pack('V', 36 + $dataSize)
+            .'WAVEfmt '
+            .pack('V', 16)
+            .pack('v', 1)
+            .pack('v', $channels)
+            .pack('V', $sampleRate)
+            .pack('V', $byteRate)
+            .pack('v', $blockAlign)
+            .pack('v', $bitsPerSample)
+            .'data'
+            .pack('V', $dataSize);
+
+        return new GeneratedAudioDTO($header.$binary, 'audio/wav');
     }
 
     private function sendPrompt(string $model, array $body): string

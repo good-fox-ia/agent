@@ -9,9 +9,16 @@
 parameters:
     groq.chat_model: 'openai/gpt-oss-120b'
     gemini.chat_model: 'gemini-2.0-flash'
+    gemini.image_model: 'gemini-2.5-flash-image'
+    gemini.tts_model: 'gemini-2.5-flash-preview-tts'
+    openrouter.image_model: 'google/gemini-2.5-flash-image'
+    cloudflare.image_model: '@cf/black-forest-labs/flux-2-klein-4b'
     llm.text_providers_default: 'groq'
     llm.audio_providers_default: 'groq'
     llm.image_providers_default: 'gemini,groq'
+    # Безплатний (cloudflare) — першим; платні — як запасні
+    llm.image_generation_providers_default: 'cloudflare,openrouter,gemini'
+    llm.audio_generation_providers_default: 'gemini'
     groq.vision_model: 'meta-llama/llama-4-maverick-17b-128e-instruct'
     telegram.social_video.yt_dlp_binary: '/usr/local/bin/yt-dlp'
     telegram.social_video.cookies_file: ''
@@ -38,11 +45,19 @@ services:
     App\Service\LLM\Client\Interface\ImageDescriptionLLMInterface:
         factory: ['@App\Service\LLM\Factory\LlmProviderFactory', 'createImageDescriptionLlm']
 
+    App\Service\LLM\Client\Interface\ImageGenerationLLMInterface:
+        factory: ['@App\Service\LLM\Factory\LlmProviderFactory', 'createImageGenerationLlm']
+
+    App\Service\LLM\Client\Interface\AudioGenerationLLMInterface:
+        factory: ['@App\Service\LLM\Factory\LlmProviderFactory', 'createAudioGenerationLlm']
+
     App\Service\LLM\Factory\LlmProviderFactory:
         arguments:
             $textProvidersCsv: '%env(default:llm.text_providers_default:LLM_TEXT_PROVIDERS)%'
             $audioProvidersCsv: '%env(default:llm.audio_providers_default:LLM_AUDIO_PROVIDERS)%'
             $imageProvidersCsv: '%env(default:llm.image_providers_default:LLM_IMAGE_PROVIDERS)%'
+            $imageGenerationProvidersCsv: '%env(default:llm.image_generation_providers_default:LLM_IMAGE_GENERATION_PROVIDERS)%'
+            $audioGenerationProvidersCsv: '%env(default:llm.audio_generation_providers_default:LLM_AUDIO_GENERATION_PROVIDERS)%'
 
     _instanceof:
         App\Service\LLM\Tool\ToolInterface:
@@ -109,6 +124,26 @@ services:
             $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_KEYBOARD_OFF
             $description: 'Run the /keyboardoff bot command: disable the reply keyboard buttons. Use when the user wants to hide buttons or turn keyboard off — same as typing /keyboardoff.'
 
+    App\Service\LLM\Tool\TelegramBotCommandTool.voice_on:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::VOICE_ON
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_VOICE_ON
+            $description: 'Run the /voiceon bot command: enable voice (TTS) replies for this user — the bot will answer with voice messages. Use when the user asks the bot to reply with voice, speak answers aloud, or turn voice replies on — same as typing /voiceon.'
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.voice_off:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::VOICE_OFF
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_VOICE_OFF
+            $description: 'Run the /voiceoff bot command: disable voice (TTS) replies for this user — the bot will answer with text again. Use when the user wants text answers or voice replies turned off — same as typing /voiceoff.'
+
     App\Service\LLM\Tool\TelegramBotCommandTool.list_chats:
         class: App\Service\LLM\Tool\TelegramBotCommandTool
         autowire: true
@@ -162,6 +197,19 @@ services:
             $apiKey: '%env(GEMINI_API_KEY)%'
             $promptAdapter: '@App\Service\LLM\Adapter\GeminiPromptAdapter'
             $defaultChatModel: '%env(default:gemini.chat_model:GEMINI_CHAT_MODEL)%'
+            $defaultImageModel: '%env(default:gemini.image_model:GEMINI_IMAGE_MODEL)%'
+            $defaultTtsModel: '%env(default:gemini.tts_model:GEMINI_TTS_MODEL)%'
+
+    App\Service\LLM\Client\OpenRouter:
+        arguments:
+            $apiKey: '%env(OPENROUTER_API_KEY)%'
+            $defaultImageModel: '%env(default:openrouter.image_model:OPENROUTER_IMAGE_MODEL)%'
+
+    App\Service\LLM\Client\CloudflareWorkersAi:
+        arguments:
+            $accountId: '%env(CLOUDFLARE_ACCOUNT_ID)%'
+            $apiToken: '%env(CLOUDFLARE_API_TOKEN)%'
+            $defaultImageModel: '%env(default:cloudflare.image_model:CLOUDFLARE_IMAGE_MODEL)%'
 
     App\Service\Telegram\Api\TelegramService:
         arguments:

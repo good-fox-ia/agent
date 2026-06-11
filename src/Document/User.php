@@ -48,6 +48,9 @@ final class User
     #[Field(type: 'bool', nullable: true)]
     private ?bool $activeKeyboard = null;
 
+    #[Field(type: 'bool', nullable: true)]
+    private ?bool $voiceReply = null;
+
     /** @var Collection<int, User> */
     #[ReferenceMany(targetDocument: self::class, storeAs: ClassMetadata::REFERENCE_STORE_AS_ID)]
     private Collection $friends;
@@ -152,6 +155,19 @@ final class User
     public function setActiveKeyboard(bool $activeKeyboard): self
     {
         $this->activeKeyboard = $activeKeyboard;
+        $this->touchUpdatedAt();
+
+        return $this;
+    }
+
+    public function isVoiceReplyEnabled(): bool
+    {
+        return $this->voiceReply ?? false;
+    }
+
+    public function setVoiceReply(bool $voiceReply): self
+    {
+        $this->voiceReply = $voiceReply;
         $this->touchUpdatedAt();
 
         return $this;

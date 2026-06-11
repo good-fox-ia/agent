@@ -157,6 +157,28 @@ class TelegramService
     }
 
     /**
+     * Надсилає голосове повідомлення (OGG/Opus або MP3).
+     *
+     * @param array<string, mixed> $options
+     */
+    public function sendVoice(string|int $chatId, string $voicePath, array $options = []): array
+    {
+        $handle = fopen($voicePath, 'rb');
+        if ($handle === false) {
+            throw new \RuntimeException('Не вдалося відкрити аудіофайл.');
+        }
+
+        try {
+            $body = array_merge(['chat_id' => $chatId, 'voice' => $handle], $options);
+            $decoded = $this->callApiMultipart('sendVoice', $body);
+
+            return $decoded['result'] ?? $decoded;
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
      * @param array<string, mixed> $options
      */
     public function sendPhoto(string|int $chatId, string $photoPath, array $options = []): array
