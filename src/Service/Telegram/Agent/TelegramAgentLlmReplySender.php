@@ -40,12 +40,18 @@ final class TelegramAgentLlmReplySender
     private const LLM_SYSTEM_PROMPT = <<<'PROMPT'
 Ти корисний асистент. Відповідай українською, стисло та по суті.
 
+Структура історії чату:
+- Кожне повідомлення в історії починається з службової позначки [#ID], де ID — ідентифікатор повідомлення.
+- Позначка [#ID → #ID2] означає, що це повідомлення є відповіддю (reply) на повідомлення #ID2 — враховуй вміст повідомлення #ID2 як контекст, до якого звертається автор.
+- Ці позначки — лише метадані для тебе. НІКОЛИ не додавай [#ID] чи подібні позначки у власні відповіді й не згадуй їх у тексті.
+
 Інструменти (function calling):
 - Викликай лише інструменти з переліку «Дозволені інструменти» нижче. Жодних інших імен.
 - Заборонено вигадувати тулзи: code, python, run, execute, shell, interpreter, calculator тощо.
 - Код, формули, алгоритми — лише текстом у відповіді; виконання коду недоступне.
 - Не виводь у тексті JSON/об’єкти виклику тулза ({ "name": "...", "parameters": ... }) — або офіційний tool_calls API, або звичайна відповідь користувачу.
-- web_search — пошук в інтернеті (свіжа інформація, новини, факти); fetch_web_page — вміст сторінки за URL; describe_image — опис зображення за шляхом до файла.
+- web_search — пошук в інтернеті (свіжа інформація, новини, факти); fetch_web_page — вміст сторінки за URL; describe_image — опис зображення за шляхом до файла; read_file — прочитати вміст локального файла (PDF, текст, код, документ) за шляхом.
+- Якщо в повідомленні є позначка [Прикріплено файл: /шлях] — це шлях до файла на сервері: для зображень викликай describe_image, для решти файлів — read_file з цим шляхом.
 - do_nothing — виклич, коли відповідати в чат не потрібно; після нього не пиши жодного тексту.
 - ask_user_question — коли потрібна відповідь користувача з варіантами: передай питання і 2–10 варіантів, бот покаже кнопки. Після виклику не пиши жодного тексту — питання і є відповіддю.
 
@@ -440,8 +446,9 @@ PROMPT;
 
         $messages = [];
         foreach ($stored as $doc) {
-            $t = $doc->getText();
-            if ($t === null || trim($t) === '') {
+            $t = trim($doc->getText() ?? '');
+            $filePath = $doc->getFilePath();
+            if ($t === '' && $filePath === null) {
                 continue;
             }
             $role = match ($doc->getType()) {
@@ -452,9 +459,14 @@ PROMPT;
                 continue;
             }
             $content = $t;
-            if ($isGroupChat && $role === 'user') {
-                $content = $this->prefixGroupUserMessageWithAuthor($doc, $t);
+            if ($isGroupChat && $role === 'user' && $content !== '') {
+                $content = $this->prefixGroupUserMessageWithAuthor($doc, $content);
             }
+            if ($filePath !== null && trim($filePath) !== '') {
+                $annotation = sprintf('[Прикріплено файл: %s]', trim($filePath));
+                $content = $content === '' ? $annotation : $content . "\n" . $annotation;
+            }
+            $content = $this->buildMessageIdPrefix($doc) . ' ' . $content;
             $messages[] = [
                 'role' => $role,
                 'content' => $content,
@@ -462,6 +474,19 @@ PROMPT;
         }
 
         return $messages;
+    }
+
+    /**
+     * Префікс з telegram message id: «[#123]» або «[#123 → #100]», якщо це відповідь на інше повідомлення.
+     */
+    private function buildMessageIdPrefix(\App\Document\Message $doc): string
+    {
+        $replyTo = $doc->getReplyTo();
+        if ($replyTo !== null) {
+            return sprintf('[#%d → #%d]', $doc->getTelegramMessageId(), $replyTo->getTelegramMessageId());
+        }
+
+        return sprintf('[#%d]', $doc->getTelegramMessageId());
     }
 
     private function prefixGroupUserMessageWithAuthor(\App\Document\Message $doc, string $text): string

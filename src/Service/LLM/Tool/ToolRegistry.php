@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\LLM\Tool;
 
 use App\Enum\ToolName;
+use Psr\Log\LoggerInterface;
 
 final class ToolRegistry
 {
@@ -18,7 +19,10 @@ final class ToolRegistry
      *
      * @param iterable<ToolInterface> $tools
      */
-    public function __construct(private readonly iterable $tools) {}
+    public function __construct(
+        private readonly iterable $tools,
+        private readonly LoggerInterface $logger,
+    ) {}
 
     /**
      * @return array<string, ToolInterface>
@@ -68,11 +72,27 @@ final class ToolRegistry
         return $definitions;
     }
 
+    /**
+     * Помилка тулза не має валити весь запит до LLM: повертаємо її як результат тулза,
+     * щоб модель могла відреагувати (пояснити користувачу або спробувати інакше).
+     */
     public function executeTool(string $name, array $arguments): string
     {
         $tool = $this->toolsByName()[$name] ?? null;
         if ($tool === null) throw new \InvalidArgumentException(sprintf('Unknown tool: %s', $name));
 
-        return $tool->execute($arguments);
+        try {
+            return $tool->execute($arguments);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Tool {tool} failed: {error}', [
+                'tool' => $name,
+                'error' => $e->getMessage(),
+            ]);
+
+            return json_encode(
+                ['error' => $e->getMessage()],
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE,
+            );
+        }
     }
 }
