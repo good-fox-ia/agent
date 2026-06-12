@@ -18,6 +18,8 @@ enum TelegramBotCommand: string
     case EDIT_SYSTEM_PROMPT = 'edit_system_promt';
     case FRIENDS = 'friends';
     case ADD_FRIEND = 'addfriend';
+    case TOPUP = 'topup';
+    case BALANCE = 'balance';
 
     public function asSlash(): string
     {
@@ -40,6 +42,8 @@ enum TelegramBotCommand: string
             self::EDIT_SYSTEM_PROMPT => 'System prompt активної бесіди',
             self::FRIENDS => 'Список друзів',
             self::ADD_FRIEND => 'Додати друга за @нікнеймом',
+            self::TOPUP => 'Поповнити баланс Stars',
+            self::BALANCE => 'Показати баланс Stars',
         };
     }
 
@@ -58,6 +62,8 @@ enum TelegramBotCommand: string
             self::VOICE_OFF => true,
             self::VOICE => true,
             self::EDIT_SYSTEM_PROMPT => true,
+            self::TOPUP => true,
+            self::BALANCE => true,
         };
     }
 

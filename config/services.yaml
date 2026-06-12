@@ -196,6 +196,26 @@ services:
             $description: 'Run the /addfriend bot command: add a user to the friends list by Telegram username. The user must have messaged the bot at least once. Same as typing /addfriend @username in Telegram.'
             $usernameArgument: 'username'
 
+    App\Service\LLM\Tool\TelegramBotCommandTool.topup:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::TOPUP
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_TOPUP
+            $description: 'Run the /topup bot command: top up the user Stars balance via Telegram payment. Use when the user wants to add Stars or pay — same as typing /topup in Telegram. Optional amount argument, e.g. /topup 50.'
+
+    App\Service\LLM\Tool\TelegramBotCommandTool.balance:
+        class: App\Service\LLM\Tool\TelegramBotCommandTool
+        autowire: true
+        autoconfigure: false
+        tags: ['app.llm.tool']
+        arguments:
+            $command: !php/enum App\Enum\TelegramBotCommand::BALANCE
+            $toolName: !php/enum App\Enum\ToolName::TELEGRAM_COMMAND_BALANCE
+            $description: 'Run the /balance bot command: show the user current Telegram Stars balance. Use when the user asks how many Stars they have — same as typing /balance in Telegram.'
+
     App\Service\LLM\Client\Groq:
         arguments:
             $apiKey: '%env(GROQ_API_KEY)%'

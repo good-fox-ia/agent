@@ -12,6 +12,8 @@ use App\Service\Telegram\Callback\Handler\AskQuestionAnswerProcessor;
 use App\Service\Telegram\Callback\Handler\HistoryProcessor;
 use App\Service\Telegram\Callback\Handler\SelectChatProcessor;
 use App\Service\Telegram\Callback\Handler\SelectVoiceProcessor;
+use App\Service\Telegram\Callback\Handler\TopupAmountProcessor;
+use App\Service\Telegram\Payment\StarsPaymentService;
 use App\Service\Telegram\Chat\Action\SwitchChatAction;
 use App\Service\Telegram\Chat\Content\ChatHistoryFormatter;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
@@ -86,6 +88,20 @@ final class ProcessorHandlesTest extends TestCase
         );
 
         self::assertTrue($processor->handles('aq:1'));
+        self::assertFalse($processor->handles('tv:alloy'));
+        self::assertFalse($processor->handles(''));
+    }
+
+    public function testTopupAmountHandlesOnlyItsPrefix(): void
+    {
+        $processor = new TopupAmountProcessor(
+            $this->createStub(UserRepository::class),
+            $this->createStub(StarsPaymentService::class),
+            $this->createStub(TelegramService::class),
+            $this->createStub(LoggerInterface::class),
+        );
+
+        self::assertTrue($processor->handles('tp:10'));
         self::assertFalse($processor->handles('tv:alloy'));
         self::assertFalse($processor->handles(''));
     }

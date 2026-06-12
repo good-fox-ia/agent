@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Message\Telegram\ProcessTelegramCallback;
 use App\Message\Telegram\ProcessTelegramMessage;
+use App\Message\Telegram\ProcessTelegramPreCheckout;
 use App\Service\Telegram\Callback\Dispatcher;
 use App\Service\Telegram\Api\TelegramBotCommandsRegistrar;
 use App\Service\Telegram\Api\TelegramService;
@@ -73,6 +74,11 @@ final class TelegramEventUpdatesCommand extends Command
 
                 $updateId = (int) ($update['update_id'] ?? 0);
                 $offset = max($offset, $updateId + 1);
+
+                $preCheckout = $update['pre_checkout_query'] ?? null;
+                if (is_array($preCheckout)) {
+                    $this->bus->dispatch(new ProcessTelegramPreCheckout($preCheckout));
+                }
 
                 $callback = $update['callback_query'] ?? null;
                 if (is_array($callback))

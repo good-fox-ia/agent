@@ -10,6 +10,7 @@ use App\Service\Telegram\Callback\Handler\AskQuestionAnswerProcessor;
 use App\Service\Telegram\Callback\Handler\HistoryProcessor;
 use App\Service\Telegram\Callback\Handler\SelectChatProcessor;
 use App\Service\Telegram\Callback\Handler\SelectVoiceProcessor;
+use App\Service\Telegram\Callback\Handler\TopupAmountProcessor;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -22,6 +23,7 @@ final class DispatcherTest extends TestCase
     private HistoryProcessor&MockObject $history;
     private SelectVoiceProcessor&MockObject $selectVoice;
     private AskQuestionAnswerProcessor&MockObject $askQuestionAnswer;
+    private TopupAmountProcessor&MockObject $topupAmount;
 
     protected function setUp(): void
     {
@@ -29,6 +31,7 @@ final class DispatcherTest extends TestCase
         $this->history = $this->createMock(HistoryProcessor::class);
         $this->selectVoice = $this->createMock(SelectVoiceProcessor::class);
         $this->askQuestionAnswer = $this->createMock(AskQuestionAnswerProcessor::class);
+        $this->topupAmount = $this->createMock(TopupAmountProcessor::class);
 
         // handles() мокаються згідно з реальними префіксами callback_data
         $this->selectChat->method('handles')
@@ -39,6 +42,8 @@ final class DispatcherTest extends TestCase
             ->willReturnCallback(static fn (string $data): bool => str_starts_with($data, 'tv:'));
         $this->askQuestionAnswer->method('handles')
             ->willReturnCallback(static fn (string $data): bool => str_starts_with($data, 'aq:'));
+        $this->topupAmount->method('handles')
+            ->willReturnCallback(static fn (string $data): bool => str_starts_with($data, 'tp:'));
     }
 
     private function buildDispatcher(LoggerInterface $logger): Dispatcher
@@ -48,6 +53,7 @@ final class DispatcherTest extends TestCase
             $this->history,
             $this->selectVoice,
             $this->askQuestionAnswer,
+            $this->topupAmount,
             $logger,
         );
     }
@@ -60,6 +66,7 @@ final class DispatcherTest extends TestCase
             'history' => $this->history,
             'selectVoice' => $this->selectVoice,
             'askQuestionAnswer' => $this->askQuestionAnswer,
+            'topupAmount' => $this->topupAmount,
         ];
 
         foreach ($processors as $name => $processor) {
@@ -79,6 +86,7 @@ final class DispatcherTest extends TestCase
         yield 'історія бесіди' => ['sh:abc123', 'history'];
         yield 'вибір голосу' => ['tv:alloy', 'selectVoice'];
         yield 'відповідь на питання' => ['aq:0', 'askQuestionAnswer'];
+        yield 'поповнення Stars' => ['tp:50', 'topupAmount'];
     }
 
     public function testUnknownCallbackIsLoggedAndNotProcessed(): void
@@ -87,6 +95,7 @@ final class DispatcherTest extends TestCase
         $this->history->expects(self::never())->method('process');
         $this->selectVoice->expects(self::never())->method('process');
         $this->askQuestionAnswer->expects(self::never())->method('process');
+        $this->topupAmount->expects(self::never())->method('process');
 
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())->method('warning');

@@ -92,6 +92,8 @@ final class WelcomeMessage
 🔊 <code>/voiceon</code> та <code>/voiceoff</code> — увімкнути або вимкнути відповіді голосом.
 🗣️ <code>/voice</code> — обрати голос озвучки.
 ⚙️ <code>/edit_system_promt</code> — змінити system prompt для активної бесіди (<code>reset</code> — скинути).
+⭐ <code>/balance</code> — твій баланс Stars.
+💫 <code>/topup</code> — поповнити баланс Stars (<code>/topup 25</code> — довільна сума).
 TEXT;
     }
 }

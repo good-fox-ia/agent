@@ -45,6 +45,40 @@ class TelegramService
         $this->callApi('answerCallbackQuery', $body);
     }
 
+    public function answerPreCheckoutQuery(string $preCheckoutQueryId, bool $ok, ?string $errorMessage = null): void
+    {
+        $body = [
+            'pre_checkout_query_id' => $preCheckoutQueryId,
+            'ok' => $ok,
+        ];
+        if (!$ok && $errorMessage !== null && $errorMessage !== '') {
+            $body['error_message'] = $errorMessage;
+        }
+
+        $this->callApi('answerPreCheckoutQuery', $body);
+    }
+
+    public function sendStarsInvoice(
+        string|int $chatId,
+        int $amount,
+        string $payload,
+        string $description,
+    ): array {
+        $body = [
+            'chat_id' => $chatId,
+            'title' => 'Поповнення балансу',
+            'description' => $description,
+            'payload' => $payload,
+            'currency' => 'XTR',
+            'prices' => [['label' => 'Stars', 'amount' => $amount]],
+            'provider_token' => '',
+        ];
+
+        $decoded = $this->callApi('sendInvoice', $body);
+
+        return $decoded['result'] ?? $decoded;
+    }
+
     public function editMessageText(string|int $chatId, int $messageId, string $text, array $options = []): array
     {
         $body = array_merge([
@@ -111,7 +145,7 @@ class TelegramService
             'offset' => $offset,
             'timeout' => $timeout,
             'limit' => $limit,
-            'allowed_updates' => ['message', 'edited_message', 'callback_query'],
+            'allowed_updates' => ['message', 'edited_message', 'callback_query', 'pre_checkout_query'],
         ]);
 
         return $decoded['result'] ?? [];

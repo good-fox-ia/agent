@@ -61,6 +61,7 @@ framework:
             App\Message\Telegram\ProcessTelegramMessage: telegram_inbound
             # Callback обробляємо синхронно в telegram-poll, щоб не чекати в черзі воркера
             App\Message\Telegram\ProcessTelegramCallback: sync
+            App\Message\Telegram\ProcessTelegramPreCheckout: sync
             App\Message\Telegram\Content\ProcessTelegramTextMessage: telegram_messages
             App\Message\Telegram\Content\ProcessTelegramAudioMessage: telegram_audio
             App\Message\Telegram\Content\ProcessTelegramMediaMessage: telegram_media

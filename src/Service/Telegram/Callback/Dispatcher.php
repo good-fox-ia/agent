@@ -8,6 +8,7 @@ use App\Service\Telegram\Callback\Handler\AskQuestionAnswerProcessor;
 use App\Service\Telegram\Callback\Handler\HistoryProcessor;
 use App\Service\Telegram\Callback\Handler\SelectChatProcessor;
 use App\Service\Telegram\Callback\Handler\SelectVoiceProcessor;
+use App\Service\Telegram\Callback\Handler\TopupAmountProcessor;
 use Psr\Log\LoggerInterface;
 
 
@@ -18,6 +19,7 @@ final class Dispatcher
         private readonly HistoryProcessor $history,
         private readonly SelectVoiceProcessor $selectVoice,
         private readonly AskQuestionAnswerProcessor $askQuestionAnswer,
+        private readonly TopupAmountProcessor $topupAmount,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -47,6 +49,13 @@ final class Dispatcher
         if ($this->askQuestionAnswer->handles($callback->data)) {
             $this->logger->info('Telegram callback: question answer data={data}', ['data' => $callback->data]);
             $this->askQuestionAnswer->process($callback);
+
+            return;
+        }
+
+        if ($this->topupAmount->handles($callback->data)) {
+            $this->logger->info('Telegram callback: topup amount data={data}', ['data' => $callback->data]);
+            $this->topupAmount->process($callback);
 
             return;
         }

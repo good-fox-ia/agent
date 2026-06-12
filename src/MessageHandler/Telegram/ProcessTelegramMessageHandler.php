@@ -10,6 +10,7 @@ use App\Message\Telegram\Content\ProcessTelegramTextMessage;
 use App\Message\Telegram\ProcessTelegramMessage;
 use App\Service\Telegram\Command\CommandProcessor;
 use App\Service\Telegram\Api\TelegramMessageHelper;
+use App\Service\Telegram\Payment\StarsPaymentService;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -22,6 +23,7 @@ final class ProcessTelegramMessageHandler
         private readonly TelegramPersistenceService $persistence,
         private readonly MessageBusInterface $bus,
         private readonly CommandProcessor $commandProcessor,
+        private readonly StarsPaymentService $starsPayment,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -33,6 +35,12 @@ final class ProcessTelegramMessageHandler
 
         $this->persistence->syncParticipantsFromTelegramMessage($message);
         $inbound = $this->persistence->recordInboundUserMessage($message);
+
+        if (isset($message['successful_payment'])) {
+            $this->starsPayment->handleSuccessfulPayment($message);
+
+            return;
+        }
 
         if ($this->commandProcessor->tryProcess($message, $inbound)) {
             return;
