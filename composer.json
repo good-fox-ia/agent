@@ -72,5 +72,11 @@
       "require": "8.0.*",
       "docker": false
     }
+    },
+    "require-dev": {
+        "dg/bypass-finals": "^1.10",
+        "phpunit/phpunit": "^13.2",
+        "symfony/browser-kit": "8.0.*",
+        "symfony/css-selector": "8.0.*"
     }
 }

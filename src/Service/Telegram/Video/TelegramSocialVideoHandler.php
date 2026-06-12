@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Telegram\Video;
 
 use App\Repository\MessageRepository;
+use App\Service\Telegram\Api\TelegramHtmlFormatter;
 use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Persistence\TelegramPersistenceService;
 use App\Service\Telegram\UI\UserMessageSender;
@@ -67,14 +68,20 @@ final class TelegramSocialVideoHandler
 
             $sendOptions = ['reply_to_message_id' => $triggerTelegramMessageId];
             if ($result->caption !== null && $result->caption !== '') {
-                $sendOptions['caption'] = $this->formatCaptionAsBlockquote($result->caption);
+                $sendOptions['caption'] = TelegramHtmlFormatter::formatPlainTextAsExpandableBlockquote(
+                    $result->caption,
+                    self::TELEGRAM_CAPTION_MAX_LENGTH,
+                );
                 $sendOptions['parse_mode'] = 'HTML';
             }
 
             if ($result->kind === SocialMediaKind::Text) {
                 $sent = $this->messageSender->send(
                     $telegramChatId,
-                    $this->formatCaptionAsBlockquote((string) $result->caption, self::TELEGRAM_TEXT_MAX_LENGTH),
+                    TelegramHtmlFormatter::formatPlainTextAsExpandableBlockquote(
+                        (string) $result->caption,
+                        self::TELEGRAM_TEXT_MAX_LENGTH,
+                    ),
                     $isGroup,
                     [
                         'reply_to_message_id' => $triggerTelegramMessageId,
@@ -168,15 +175,4 @@ final class TelegramSocialVideoHandler
         return dirname(__DIR__, 4).'/test.mp4';
     }
 
-    private function formatCaptionAsBlockquote(string $caption, int $maxLength = self::TELEGRAM_CAPTION_MAX_LENGTH): string
-    {
-        $open = '<blockquote expandable>';
-        $close = '</blockquote>';
-        $maxPlain = $maxLength - strlen($open) - strlen($close);
-        if (mb_strlen($caption) > $maxPlain) {
-            $caption = mb_substr($caption, 0, $maxPlain - 1).'…';
-        }
-
-        return $open.htmlspecialchars($caption, ENT_QUOTES | ENT_HTML5, 'UTF-8').$close;
-    }
 }

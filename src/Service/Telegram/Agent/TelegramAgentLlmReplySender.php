@@ -16,6 +16,7 @@ use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\Client\Interface\TextLLMInterface;
 use App\Service\LLM\Parser\InlineToolCallParser;
 use App\Service\LLM\Tool\ToolRegistry;
+use App\Service\Telegram\Api\TelegramHtmlFormatter;
 use App\Service\Telegram\Api\TelegramService;
 use App\Service\Telegram\Chat\Content\ChatTitleGenerator;
 use App\Service\Telegram\Context\TelegramLlmInvocationContext;
@@ -163,7 +164,7 @@ PROMPT;
 
                 return;
             }
-            $answer = mb_substr(trim($answer), 0, self::TELEGRAM_MAX_MESSAGE_LENGTH);
+            $answer = trim($answer);
             if ($answer === '') {
                 return;
             }
@@ -172,8 +173,10 @@ PROMPT;
                 return;
             }
 
+            $formattedAnswer = TelegramHtmlFormatter::wrapExpandableBlockquote($answer, self::TELEGRAM_MAX_MESSAGE_LENGTH);
+
             try {
-                $sent = $this->messageSender->send($telegramChatId, $answer, $isGroup);
+                $sent = $this->messageSender->send($telegramChatId, $formattedAnswer, $isGroup);
             } catch (\Throwable $e) {
                 if (!$this->isRetriableTelegramSendError($e) || $attempt >= self::SEND_FIX_MAX_ATTEMPTS) {
                     throw $e;
