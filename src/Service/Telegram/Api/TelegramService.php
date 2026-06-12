@@ -94,29 +94,12 @@ class TelegramService
 
     public function deleteMessage(string|int $chatId, int $messageId): bool
     {
-        return false;
-        
         try {
             $this->callApi('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
 
             return true;
         } catch (\Throwable) {
             return false;
-        }
-    }
-
-    /**
-     * Намагається видалити повідомлення в чаті (останні $sweepLimit id до $upToMessageId включно).
-     */
-    public function clearChat(string|int $chatId, ?int $upToMessageId = null, int $sweepLimit = 200): void
-    {
-        if ($upToMessageId === null || $upToMessageId <= 0) {
-            return;
-        }
-
-        $from = max(1, $upToMessageId - $sweepLimit + 1);
-        for ($messageId = $upToMessageId; $messageId >= $from; $messageId--) {
-            $this->deleteMessage($chatId, $messageId);
         }
     }
 

@@ -50,6 +50,10 @@ final class TopupAmountProcessor
         }
 
         try {
+            if ($callback->messageId > 0) {
+                $this->telegram->deleteMessage($callback->chatId, $callback->messageId);
+            }
+
             $user = $this->users->upsertFromTelegramFromPayload(['id' => $callback->fromId]);
             $error = $this->starsPayment->sendTopupInvoice($user, $callback->chatId, $amount);
             if ($error !== null) {

@@ -15,6 +15,23 @@ final class TelegramHtmlFormatter
 
     private function __construct() {}
 
+    /** Прибирає службові позначки [#ID] та [#ID → #ID2] з тексту LLM. */
+    public static function stripMessageIdMarkers(string $text): string
+    {
+        $stripped = preg_replace('/\[#\d+(?: → #\d+)?\]\s*/u', '', $text);
+
+        return trim($stripped ?? $text);
+    }
+
+    public static function truncate(string $text, int $maxLength): string
+    {
+        if (mb_strlen($text) <= $maxLength) {
+            return $text;
+        }
+
+        return mb_substr($text, 0, $maxLength - 1).'…';
+    }
+
     public static function wrapExpandableBlockquote(string $html, int $maxLength = 4096): string
     {
         $maxInner = $maxLength - strlen(self::BLOCKQUOTE_OPEN) - strlen(self::BLOCKQUOTE_CLOSE);

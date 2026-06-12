@@ -16,14 +16,9 @@ use App\Service\LLM\DTO\PromptDTO;
 use App\Service\LLM\Client\Interface\TextLLMInterface;
 use App\Service\LLM\Parser\InlineToolCallParser;
 use App\Service\LLM\Tool\ToolRegistry;
-use App\Service\Telegram\Api\TelegramHtmlFormatter;
 use App\Service\Telegram\Api\TelegramService;
-use App\Service\Telegram\Chat\Content\ChatTitleGenerator;
 use App\Service\Telegram\Context\TelegramLlmInvocationContext;
 use App\Service\Telegram\Persistence\ActiveChatService;
-use App\Service\Telegram\Persistence\TelegramPersistenceService;
-use App\Service\Telegram\UI\UserMessageSender;
-use App\Service\Telegram\Voice\VoiceReplySender;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -31,12 +26,7 @@ use Psr\Log\LoggerInterface;
  */
 final class TelegramAgentLlmReplySender
 {
-    private const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
-
     private const LLM_MAX_CONTEXT_MESSAGES = 1000;
-
-    /** Спроби відправки + повторна генерація після помилки Telegram HTML. */
-    private const SEND_FIX_MAX_ATTEMPTS = 3;
 
     private const LLM_SYSTEM_PROMPT = <<<'PROMPT'
 Ти корисний асистент. Відповідай українською, стисло та по суті.
@@ -56,30 +46,20 @@ final class TelegramAgentLlmReplySender
 - do_nothing — виклич, коли відповідати в чат не потрібно; після нього не пиши жодного тексту.
 - ask_user_question — коли потрібна відповідь користувача з варіантами: передай питання і 2–10 варіантів, бот покаже кнопки. Після виклику не пиши жодного тексту — питання і є відповіддю.
 
-HTML для Telegram (parse_mode HTML):
-- Дозволені теги: <b>, <i>, <u>, <s>, <code>, <pre>, <a href="URL">, <tg-spoiler>.
-- Кожен відкритий тег закрий парним: <b>…</b>, <code>…</code>, <pre>…</pre>. Незакриті теги ламають відправку.
-- Перед відправкою перевір, що кількість відкривних і закривних тегів збігається для кожного типу.
-- Код у <code>одним рядком</code> або багаторядковий у <pre>…</pre>; не змішуй незакриті фрагменти.
-- Не використовуй Markdown (*, _, `, ```). Символи &, <, > поза тегами — &amp;, &lt;, &gt; (наприклад «a &lt; b»).
-
 Команди бота: якщо користувач просить те саме, що /start, /help, /newchat, /keyboardon, /keyboardoff, /voiceon, /voiceoff, /voice, /listchats, /friends, /addfriend, /edit_system_promt, /topup, /balance — виклич відповідний telegram_command_* замість імітації текстом. Після такого інструменту не дублюй автоматичні повідомлення бота.
 PROMPT;
 
     public function __construct(
         private readonly TelegramService $telegram,
-        private readonly UserMessageSender $messageSender,
+        private readonly TelegramAgentOutboundSender $outboundSender,
         private readonly TextLLMInterface $llm,
         private readonly MessageRepository $messages,
         private readonly GroupRepository $groups,
         private readonly UserRepository $users,
-        private readonly VoiceReplySender $voiceReplySender,
         private readonly ActiveChatService $activeChat,
-        private readonly TelegramPersistenceService $persistence,
         private readonly TelegramLlmInvocationContext $invocationContext,
         private readonly InlineToolCallParser $inlineToolCallParser,
         private readonly ToolRegistry $toolRegistry,
-        private readonly ChatTitleGenerator $chatTitleGenerator,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -137,163 +117,27 @@ PROMPT;
         bool $isGroup,
         ?\App\Document\Message $replyToInbound,
     ): void {
-        $basePrompt = $this->buildPromptDtoForChat($logicalChat);
-        /** @var list<array{role: string, content: string}> $retryMessages */
-        $retryMessages = [];
-
-        for ($attempt = 1; $attempt <= self::SEND_FIX_MAX_ATTEMPTS; $attempt++) {
-            $prompt = $retryMessages === []
-                ? $basePrompt
-                : new PromptDTO(
-                    messages: [...$basePrompt->getMessages(), ...$retryMessages],
-                    systemPrompt: $basePrompt->getSystemPrompt(),
-                );
-
-            $answer = $this->llm->complete($prompt);
-            if ($this->invocationContext->isReplySuppressed()) {
-                $this->logger->info('Тулз попросив пропустити відповідь, нічого не надсилаємо chat={chat}', [
-                    'chat' => $telegramChatId,
-                ]);
-
-                return;
-            }
-            if ($this->inlineToolCallParser->looksLikeToolCall($answer)) {
-                $this->logger->warning('LLM повернув сирий виклик тулза замість тексту, пропускаємо відправку chat={chat}', [
-                    'chat' => $telegramChatId,
-                ]);
-
-                return;
-            }
-            $answer = trim($answer);
-            if ($answer === '') {
-                return;
-            }
-
-            if ($this->trySendVoiceReply($logicalChat, $telegramChatId, $isGroup, $replyToInbound, $answer)) {
-                return;
-            }
-
-            $formattedAnswer = TelegramHtmlFormatter::wrapExpandableBlockquote($answer, self::TELEGRAM_MAX_MESSAGE_LENGTH);
-
-            try {
-                $sent = $this->messageSender->send($telegramChatId, $formattedAnswer, $isGroup);
-            } catch (\Throwable $e) {
-                if (!$this->isRetriableTelegramSendError($e) || $attempt >= self::SEND_FIX_MAX_ATTEMPTS) {
-                    throw $e;
-                }
-                $this->logger->warning(
-                    'Telegram відхилив HTML, повторний запит до LLM chat={chat} attempt={attempt}: {error}',
-                    [
-                        'chat' => $telegramChatId,
-                        'attempt' => $attempt,
-                        'error' => $e->getMessage(),
-                    ],
-                );
-                $retryMessages = [
-                    ['role' => 'assistant', 'content' => $answer],
-                    ['role' => 'user', 'content' => $this->buildSendFailureCorrectionPrompt($e)],
-                ];
-
-                continue;
-            }
-
-            $this->persistence->recordAgentOutboundFromTelegramSend($sent, $isGroup, $replyToInbound, $logicalChat);
-
-            if (!$isGroup) {
-                $this->chatTitleGenerator->updateTitleIfNeeded($logicalChat);
-            }
-            $this->logger->info('Відповідь агента надіслано в chat {chat}', ['chat' => $telegramChatId]);
+        $answer = $this->llm->complete($this->buildPromptDtoForChat($logicalChat));
+        if ($this->invocationContext->isReplySuppressed()) {
+            $this->logger->info('Тулз попросив пропустити відповідь, нічого не надсилаємо chat={chat}', [
+                'chat' => $telegramChatId,
+            ]);
 
             return;
         }
-    }
-
-    /**
-     * Якщо в користувача увімкнено голосові відповіді — озвучує текст через TTS і надсилає voice message.
-     * Повертає true, коли голосову відповідь надіслано (текст уже не відправляємо).
-     */
-    private function trySendVoiceReply(
-        Chat $logicalChat,
-        int $telegramChatId,
-        bool $isGroup,
-        ?\App\Document\Message $replyToInbound,
-        string $answer,
-    ): bool {
-        $user = $this->resolveReplyRecipientUser($telegramChatId, $isGroup, $replyToInbound);
-        if ($user === null || !$user->isVoiceReplyEnabled() || !$this->voiceReplySender->isAvailable()) {
-            return false;
-        }
-
-        try {
-            $sent = $this->voiceReplySender->sendVoiceReply($telegramChatId, $answer, voice: $user->getTtsVoice());
-        } catch (\Throwable $e) {
-            $this->logger->warning('Не вдалося надіслати голосову відповідь chat={chat}, fallback на текст: {error}', [
+        if ($this->inlineToolCallParser->looksLikeToolCall($answer)) {
+            $this->logger->warning('LLM повернув сирий виклик тулза замість тексту, пропускаємо відправку chat={chat}', [
                 'chat' => $telegramChatId,
-                'error' => $e->getMessage(),
             ]);
 
-            return false;
+            return;
+        }
+        $answer = trim($answer);
+        if ($answer === '') {
+            return;
         }
 
-        // Voice message не має поля text — зберігаємо текст відповіді, щоб не втратити контекст LLM.
-        $this->persistence->recordAgentOutboundFromTelegramSend($sent + ['text' => $answer], $isGroup, $replyToInbound, $logicalChat);
-
-        if (!$isGroup) {
-            $this->chatTitleGenerator->updateTitleIfNeeded($logicalChat);
-        }
-        $this->logger->info('Голосову відповідь агента надіслано в chat {chat}', ['chat' => $telegramChatId]);
-
-        return true;
-    }
-
-    /**
-     * Користувач, чиї налаштування голосу застосовуємо: автор тригер-повідомлення,
-     * а у приватному чаті — користувач за telegram chat id.
-     */
-    private function resolveReplyRecipientUser(
-        int $telegramChatId,
-        bool $isGroup,
-        ?\App\Document\Message $replyToInbound,
-    ): ?User {
-        $author = $replyToInbound?->getAuthor()
-            ?? $this->invocationContext->getInbound()?->getAuthor();
-
-        if ($author instanceof User) {
-            return $author;
-        }
-
-        return $isGroup ? null : $this->users->findOneByTelegramUserId($telegramChatId);
-    }
-
-    private function buildSendFailureCorrectionPrompt(\Throwable $e): string
-    {
-        $detail = $this->extractTelegramErrorDescription($e->getMessage());
-
-        return 'Telegram API відхилив попередню відповідь (parse_mode HTML): '
-            . $detail
-            . "\n\nВиправ розмітку (закрий усі HTML-теги, екрануй &, <, > поза тегами) і надішли лише виправлений текст відповіді користувачу — без пояснень про помилку.";
-    }
-
-    private function extractTelegramErrorDescription(string $message): string
-    {
-        if (preg_match('/"description":"((?:[^"\\\\]|\\\\.)*)"/', $message, $matches) === 1) {
-            return stripcslashes($matches[1]);
-        }
-
-        return $message;
-    }
-
-    private function isRetriableTelegramSendError(\Throwable $e): bool
-    {
-        if ($e->getCode() !== 400) {
-            return false;
-        }
-
-        $message = $e->getMessage();
-
-        return str_contains($message, "can't parse entities")
-            || str_contains($message, 'parse entities')
-            || str_contains($message, 'unsupported start tag');
+        $this->outboundSender->deliver($telegramChatId, $isGroup, $logicalChat, $answer, $replyToInbound);
     }
 
     /**

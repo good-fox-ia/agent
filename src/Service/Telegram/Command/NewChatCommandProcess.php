@@ -37,7 +37,6 @@ final class NewChatCommandProcess implements CommandProcessInterface
     public function onProcess(array $telegramMessage, ?Message $inbound): void
     {
         $chatId = (int) ($telegramMessage['chat']['id'] ?? 0);
-        $messageId = (int) ($telegramMessage['message_id'] ?? 0);
         $from = $telegramMessage['from'] ?? null;
 
         if ($chatId === 0 || !is_array($from) || !isset($from['id'])) {
@@ -58,12 +57,6 @@ final class NewChatCommandProcess implements CommandProcessInterface
                     $this->groups->upsertFromTelegramChatPayload($telegramMessage['chat'])->addUser($user),
                 )
                 : $this->chats->createForUser($user);
-
-            if ($messageId > 0) {
-                $this->telegram->deleteMessage($chatId, $messageId);
-            }
-
-            $this->telegram->clearChat($chatId, $messageId);
 
             $sent = $isGroup
                 ? $this->messageSender->send($chatId, self::CONFIRMATION_TEXT, true)

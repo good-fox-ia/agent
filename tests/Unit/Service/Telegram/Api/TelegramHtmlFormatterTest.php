@@ -43,4 +43,33 @@ final class TelegramHtmlFormatterTest extends TestCase
         self::assertLessThanOrEqual(100, mb_strlen($formatted));
         self::assertStringEndsWith('…</blockquote>', $formatted);
     }
+
+    public function testStripMessageIdMarkersRemovesSingleId(): void
+    {
+        self::assertSame(
+            'Привіт',
+            TelegramHtmlFormatter::stripMessageIdMarkers('[#123] Привіт'),
+        );
+    }
+
+    public function testStripMessageIdMarkersRemovesReplyId(): void
+    {
+        self::assertSame(
+            'Відповідь',
+            TelegramHtmlFormatter::stripMessageIdMarkers('[#456 → #123] Відповідь'),
+        );
+    }
+
+    public function testStripMessageIdMarkersRemovesMultiple(): void
+    {
+        self::assertSame(
+            'Текст',
+            TelegramHtmlFormatter::stripMessageIdMarkers('[#1] [#2 → #3] Текст'),
+        );
+    }
+
+    public function testTruncateAppendsEllipsis(): void
+    {
+        self::assertSame('abc…', TelegramHtmlFormatter::truncate('abcdef', 4));
+    }
 }
