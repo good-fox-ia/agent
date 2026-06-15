@@ -7,7 +7,6 @@ namespace App\Command;
 use App\Message\Telegram\ProcessTelegramCallback;
 use App\Message\Telegram\ProcessTelegramMessage;
 use App\Message\Telegram\ProcessTelegramPreCheckout;
-use App\Service\Telegram\Callback\Dispatcher;
 use App\Service\Telegram\Api\TelegramBotCommandsRegistrar;
 use App\Service\Telegram\Api\TelegramService;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -28,7 +27,6 @@ final class TelegramEventUpdatesCommand extends Command
         private readonly TelegramService $telegram,
         private readonly TelegramBotCommandsRegistrar $commandsRegistrar,
         private readonly MessageBusInterface $bus,
-        private readonly Dispatcher $callbackDispatcher,
     ) {
         parent::__construct();
     }
