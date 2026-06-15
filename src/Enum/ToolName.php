@@ -11,6 +11,7 @@ enum ToolName: string
     case FETCH_WEB_PAGE = 'fetch_web_page';
     case WEB_SEARCH = 'web_search';
     case DESCRIBE_IMAGE = 'describe_image';
+    case GENERATE_IMAGE = 'generate_image';
     case READ_FILE = 'read_file';
     case DO_NOTHING = 'do_nothing';
     case ASK_USER_QUESTION = 'ask_user_question';

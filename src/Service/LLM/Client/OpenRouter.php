@@ -31,6 +31,11 @@ final class OpenRouter implements ImageGenerationLLMInterface
         return $this->apiKey !== '';
     }
 
+    public function generateImage(string $prompt, array $options = []): GeneratedImageDTO
+    {
+        throw new \RuntimeException('Text-to-image generation is not supported by OpenRouter.');
+    }
+
     public function editImage(string $imageBinary, string $mimeType, string $prompt, array $options = []): GeneratedImageDTO
     {
         if ($this->apiKey === '') {

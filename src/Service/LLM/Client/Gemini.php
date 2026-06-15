@@ -24,7 +24,15 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
 
     private const DEFAULT_CHAT_MODEL = 'gemini-2.0-flash';
 
-    private const DEFAULT_IMAGE_MODEL = 'gemini-2.5-flash-image';
+    private const TEXT_TO_IMG_MODELS = [
+        'gemini-2.0-flash-exp-image-generation',
+        'imagen-4.0-generate-001',
+    ];
+
+    private const IMG_TO_IMG_MODELS = [
+        'gemini-2.0-flash-exp-image-generation',
+        'gemini-2.5-flash-image',
+    ];
 
     /** Моделі TTS у порядку спроб: помилка (квота/перевантаження) — пробуємо наступну. */
     private const DEFAULT_TTS_MODELS = 'gemini-2.5-flash-preview-tts,gemini-3.1-flash-tts-preview';
@@ -40,7 +48,6 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
         private readonly ToolRegistry $toolRegistry,
         private readonly InlineToolCallParser $inlineToolCallParser,
         private readonly string $defaultChatModel = self::DEFAULT_CHAT_MODEL,
-        private readonly string $defaultImageModel = self::DEFAULT_IMAGE_MODEL,
         private readonly string $ttsModelsCsv = self::DEFAULT_TTS_MODELS,
     ) {
         parent::__construct($apiKey, $httpClient, $promptAdapter);
@@ -139,14 +146,129 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
         return trim($text);
     }
 
+    public function generateImage(string $prompt, array $options = []): GeneratedImageDTO
+    {
+        if ($this->apiKey === '') {
+            throw new \InvalidArgumentException('GEMINI_API_KEY is empty');
+        }
+
+        $prompt = trim($prompt);
+        if ($prompt === '') {
+            throw new \InvalidArgumentException('Prompt for image generation is empty.');
+        }
+
+        $models = isset($options['model']) && is_string($options['model']) && $options['model'] !== ''
+            ? [$options['model']]
+            : self::TEXT_TO_IMG_MODELS;
+
+        $lastException = null;
+        foreach ($models as $model) {
+            try {
+                if ($this->isImagenModel($model)) {
+                    return $this->generateImageWithImagen($prompt, $model);
+                }
+
+                return $this->generateImageWithNanoBanana($prompt, $model);
+            } catch (\Throwable $e) {
+                $lastException = $e;
+            }
+        }
+
+        throw $lastException ?? new \RuntimeException('No Gemini image generation models configured.');
+    }
+
+    private function generateImageWithImagen(string $prompt, string $model): GeneratedImageDTO
+    {
+        $body = [
+            'instances' => [['prompt' => $prompt]],
+            'parameters' => [
+                'sampleCount' => 1,
+            ],
+        ];
+
+        $decoded = $this->post($this->buildPredictUrl($model), $body, $this->getHeaders());
+
+        return $this->extractGeneratedImageFromPredictions($decoded);
+    }
+
+    private function generateImageWithNanoBanana(string $prompt, string $model): GeneratedImageDTO
+    {
+        $body = [
+            'contents' => [[
+                'role' => 'user',
+                'parts' => [['text' => $prompt]],
+            ]],
+            'generationConfig' => [
+                'responseModalities' => ['TEXT', 'IMAGE'],
+            ],
+        ];
+
+        $lastException = null;
+        for ($attempt = 1; $attempt <= 2; ++$attempt) {
+            try {
+                $decoded = $this->post($this->buildUrl($model), $body, $this->getHeaders());
+
+                return $this->extractGeneratedImageFromGenerateContent($decoded);
+            } catch (\RuntimeException $e) {
+                $lastException = $e;
+                if ($e->getCode() !== 429 || $attempt >= 2) {
+                    throw $e;
+                }
+
+                $delaySeconds = $this->extractRetryDelaySeconds($e->getMessage()) ?? 45;
+                sleep(min($delaySeconds, 60));
+            }
+        }
+
+        throw $lastException ?? new \RuntimeException('Gemini image generation failed.');
+    }
+
+    private function isImagenModel(string $model): bool
+    {
+        return str_starts_with($model, 'imagen-');
+    }
+
+    private function extractRetryDelaySeconds(string $message): ?int
+    {
+        if (preg_match('/retry in (\d+(?:\.\d+)?)s/i', $message, $matches) === 1) {
+            return (int) ceil((float) $matches[1]);
+        }
+
+        if (preg_match('/"retryDelay":\s*"(\d+)s"/', $message, $matches) === 1) {
+            return (int) $matches[1];
+        }
+
+        return null;
+    }
+
     public function editImage(string $imageBinary, string $mimeType, string $prompt, array $options = []): GeneratedImageDTO
     {
         if ($this->apiKey === '') {
             throw new \InvalidArgumentException('GEMINI_API_KEY is empty');
         }
 
-        $model = $options['model'] ?? $this->defaultImageModel;
+        $models = isset($options['model']) && is_string($options['model']) && $options['model'] !== ''
+            ? [$options['model']]
+            : self::IMG_TO_IMG_MODELS;
 
+        $lastException = null;
+        foreach ($models as $model) {
+            if ($this->isImagenModel($model)) {
+                continue;
+            }
+
+            try {
+                return $this->editImageWithNanoBanana($imageBinary, $mimeType, $prompt, $model);
+            } catch (\Throwable $e) {
+                $lastException = $e;
+            }
+        }
+
+        throw $lastException ?? new \RuntimeException('No Gemini image edit models configured.');
+    }
+
+    private function editImageWithNanoBanana(string $imageBinary, string $mimeType, string $prompt, string $model): GeneratedImageDTO
+    {
         $body = [
             'contents' => [[
                 'role' => 'user',
@@ -167,28 +289,7 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
 
         $decoded = $this->post($this->buildUrl($model), $body, $this->getHeaders());
 
-        foreach ($this->extractCandidateParts($decoded) as $part) {
-            $inlineData = $part['inlineData'] ?? null;
-            if (is_array($inlineData) && isset($inlineData['data'])) {
-                $binary = base64_decode((string) $inlineData['data'], true);
-                if ($binary === false || $binary === '') {
-                    throw new \RuntimeException('Gemini image generation returned invalid image data.');
-                }
-
-                return new GeneratedImageDTO(
-                    $binary,
-                    is_string($inlineData['mimeType'] ?? null) ? $inlineData['mimeType'] : 'image/png',
-                );
-            }
-        }
-
-        $text = $this->extractTextFromResponse($decoded);
-
-        throw new \RuntimeException(
-            $text !== ''
-                ? sprintf('Gemini image generation returned no image: %s', mb_substr($text, 0, 300))
-                : 'Gemini image generation response has no image.',
-        );
+        return $this->extractGeneratedImageFromGenerateContent($decoded);
     }
 
     public function generateAudio(string $text, array $options = []): GeneratedAudioDTO
@@ -531,6 +632,74 @@ class Gemini extends AbstractLLM implements TextLLMInterface, AudioTranscription
     private function buildUrl(string $model): string
     {
         return self::API_BASE.'/'.rawurlencode($model).':generateContent';
+    }
+
+    private function buildPredictUrl(string $model): string
+    {
+        return self::API_BASE.'/'.rawurlencode($model).':predict';
+    }
+
+    /**
+     * @param array<string, mixed> $decoded
+     */
+    private function extractGeneratedImageFromPredictions(array $decoded): GeneratedImageDTO
+    {
+        $predictions = $decoded['predictions'] ?? null;
+        if (!is_array($predictions)) {
+            throw new \RuntimeException('Gemini Imagen response has no predictions.');
+        }
+
+        foreach ($predictions as $prediction) {
+            if (!is_array($prediction)) {
+                continue;
+            }
+
+            $base64 = $prediction['bytesBase64Encoded'] ?? null;
+            if (!is_string($base64) || $base64 === '') {
+                continue;
+            }
+
+            $binary = base64_decode($base64, true);
+            if ($binary === false || $binary === '') {
+                throw new \RuntimeException('Gemini Imagen returned invalid image data.');
+            }
+
+            return new GeneratedImageDTO(
+                $binary,
+                is_string($prediction['mimeType'] ?? null) ? $prediction['mimeType'] : 'image/png',
+            );
+        }
+
+        throw new \RuntimeException('Gemini Imagen response has no image.');
+    }
+
+    /**
+     * @param array<string, mixed> $decoded
+     */
+    private function extractGeneratedImageFromGenerateContent(array $decoded): GeneratedImageDTO
+    {
+        foreach ($this->extractCandidateParts($decoded) as $part) {
+            $inlineData = $part['inlineData'] ?? null;
+            if (is_array($inlineData) && isset($inlineData['data'])) {
+                $binary = base64_decode((string) $inlineData['data'], true);
+                if ($binary === false || $binary === '') {
+                    throw new \RuntimeException('Gemini image generation returned invalid image data.');
+                }
+
+                return new GeneratedImageDTO(
+                    $binary,
+                    is_string($inlineData['mimeType'] ?? null) ? $inlineData['mimeType'] : 'image/png',
+                );
+            }
+        }
+
+        $text = $this->extractTextFromResponse($decoded);
+
+        throw new \RuntimeException(
+            $text !== ''
+                ? sprintf('Gemini image generation returned no image: %s', mb_substr($text, 0, 300))
+                : 'Gemini image generation response has no image.',
+        );
     }
 
     private function getHeaders(): array

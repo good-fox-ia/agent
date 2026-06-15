@@ -31,6 +31,15 @@ final class ImageGenerationFailoverProvider implements ImageGenerationLLMInterfa
         return false;
     }
 
+    public function generateImage(string $prompt, array $options = []): GeneratedImageDTO
+    {
+        return $this->tryProviders(
+            $this->providers,
+            static fn (ImageGenerationLLMInterface $provider): GeneratedImageDTO => $provider->generateImage($prompt, $options),
+            'image generation (text-to-image)',
+        );
+    }
+
     public function editImage(string $imageBinary, string $mimeType, string $prompt, array $options = []): GeneratedImageDTO
     {
         return $this->tryProviders(

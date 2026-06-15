@@ -34,6 +34,11 @@ final class CloudflareWorkersAi implements ImageGenerationLLMInterface
         return $this->accountId !== '' && $this->apiToken !== '';
     }
 
+    public function generateImage(string $prompt, array $options = []): GeneratedImageDTO
+    {
+        throw new \RuntimeException('Text-to-image generation is not supported by Cloudflare Workers AI.');
+    }
+
     public function editImage(string $imageBinary, string $mimeType, string $prompt, array $options = []): GeneratedImageDTO
     {
         if (!$this->isConfigured()) {
