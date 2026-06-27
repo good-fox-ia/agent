@@ -144,25 +144,27 @@ final class SocialVideoDownloader
     }
 
     /**
-     * @return list<array{format: string, player_client: string|null, extra_args: list<string>}>
+     * @return list<array{format: string, player_client: string|null, extra_args: list<string>, use_cookies: bool}>
      */
     private function downloadAttempts(string $url): array
     {
         if ($this->isYouTubeUrl($url)) {
             return [
-                ['format' => self::YOUTUBE_FORMAT, 'player_client' => self::YOUTUBE_PLAYER_CLIENT, 'extra_args' => []],
-                ['format' => self::YOUTUBE_FALLBACK_FORMAT, 'player_client' => self::YOUTUBE_FALLBACK_PLAYER_CLIENT, 'extra_args' => []],
+                ['format' => self::YOUTUBE_FORMAT, 'player_client' => self::YOUTUBE_PLAYER_CLIENT, 'extra_args' => [], 'use_cookies' => true],
+                ['format' => self::YOUTUBE_FALLBACK_FORMAT, 'player_client' => self::YOUTUBE_FALLBACK_PLAYER_CLIENT, 'extra_args' => [], 'use_cookies' => true],
             ];
         }
 
         if ($this->isInstagramUrl($url)) {
+            // Спершу пробуємо без кук, і лише за невдачі — з куками.
             return [
-                ['format' => $this->instagramFormat(), 'player_client' => null, 'extra_args' => $this->instagramExtraArgs()],
+                ['format' => $this->instagramFormat(), 'player_client' => null, 'extra_args' => $this->instagramExtraArgs(), 'use_cookies' => false],
+                ['format' => $this->instagramFormat(), 'player_client' => null, 'extra_args' => $this->instagramExtraArgs(), 'use_cookies' => true],
             ];
         }
 
         return [
-            ['format' => self::DEFAULT_FORMAT, 'player_client' => null, 'extra_args' => []],
+            ['format' => self::DEFAULT_FORMAT, 'player_client' => null, 'extra_args' => [], 'use_cookies' => true],
         ];
     }
 
@@ -201,7 +203,7 @@ final class SocialVideoDownloader
                 $outputTemplate,
                 $attempt['format'],
                 $attempt['player_client'],
-                $this->resolveCookiesFile($url),
+                $attempt['use_cookies'] ? $this->resolveCookiesFile($url) : '',
                 $attempt['extra_args'],
             ));
             $process->setTimeout(300);
@@ -316,20 +318,37 @@ final class SocialVideoDownloader
             throw new \RuntimeException('gallery-dl не встановлено (потрібен для фото Instagram).');
         }
 
-        $cookiesFile = $this->resolveCookiesFile($url);
-        $command = [self::GALLERY_DL_BINARY, '--write-metadata', '-d', $workDir];
-        if ($cookiesFile !== '' && is_readable($cookiesFile)) {
-            $command[] = '--cookies';
-            $command[] = $cookiesFile;
+        $combinedOutput = '';
+
+        // Спершу пробуємо без кук, і лише за невдачі — з куками.
+        foreach ([false, true] as $useCookies) {
+            $command = [self::GALLERY_DL_BINARY, '--write-metadata', '-d', $workDir];
+
+            $cookiesFile = $useCookies ? $this->resolveCookiesFile($url) : '';
+            if ($cookiesFile !== '' && is_readable($cookiesFile)) {
+                $command[] = '--cookies';
+                $command[] = $cookiesFile;
+            }
+            $command[] = $url;
+
+            $process = new Process($command);
+            $process->setTimeout(300);
+            $this->runProcess($process, $heartbeat);
+
+            if ($process->isSuccessful()) {
+                $combinedOutput = '';
+
+                break;
+            }
+
+            $attemptOutput = trim($process->getErrorOutput()."\n".$process->getOutput());
+            $combinedOutput = $combinedOutput === ''
+                ? $attemptOutput
+                : $combinedOutput."\n".$attemptOutput;
         }
-        $command[] = $url;
 
-        $process = new Process($command);
-        $process->setTimeout(300);
-        $this->runProcess($process, $heartbeat);
-
-        if (!$process->isSuccessful()) {
-            throw new \RuntimeException($this->humanizeGalleryDlError(trim($process->getErrorOutput()."\n".$process->getOutput())));
+        if ($combinedOutput !== '') {
+            throw new \RuntimeException($this->humanizeGalleryDlError($combinedOutput));
         }
 
         $photoPaths = $this->findDownloadedPhotoPaths($workDir);
